@@ -1,0 +1,240 @@
+name: Presto Visualization Processing (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      reconstruction_id:
+        description: 'Reconstruction ID (e.g., 17095846334578667_HoloceneDA)'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Name of artifact from calling workflow to process'
+        required: true
+        type: string
+      data_dir:
+        description: 'Data directory path (optional)'
+        required: false
+        type: string
+        default: ''
+      output_dir:
+        description: 'Output directory path (optional)'
+        required: false
+        type: string
+        default: ''
+      web_data_dir:
+        description: 'Web assets directory path'
+        required: false
+        type: string
+        default: 'viz/web_assets/'
+    outputs:
+      visualization_artifact:
+        description: 'Name of the visualization output artifact'
+        value: ${{ jobs.process-visualization.outputs.artifact_name }}
+
+  workflow_dispatch:
+    inputs:
+      reconstruction_id:
+        description: 'Reconstruction ID (e.g., 17095846334578667_HoloceneDA)'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Name of artifact to process (if calling with existing artifact)'
+        required: false
+        type: string
+      data_dir:
+        description: 'Data directory path (optional)'
+        required: false
+        type: string
+      output_dir:
+        description: 'Output directory path (optional)'
+        required: false
+        type: string
+
+jobs:
+  process-visualization:
+    name: Process Presto Visualization
+    runs-on: ubuntu-latest
+    timeout-minutes: 180  # 3 hours total timeout
+    outputs:
+      artifact_name: presto-viz-output-${{ steps.setup.outputs.reconstruction_id }}
+
+    steps:
+      - name: Checkout presto-viz repository
+        uses: actions/checkout@v4
+        with:
+          repository: DaveEdge1/presto-viz  # Update this to your public viz repository
+          path: presto-viz
+
+      - name: Download input artifact
+        if: ${{ inputs.artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ./input_data
+
+      - name: Setup directories and environment
+        id: setup
+        shell: bash
+        run: |
+          RECONSTRUCTION_ID="${{ inputs.reconstruction_id }}"
+
+          # Set directory paths
+          if [ -z "${{ inputs.data_dir }}" ]; then
+            DATA_DIR="${GITHUB_WORKSPACE}/data/${RECONSTRUCTION_ID}"
+          else
+            DATA_DIR="${{ inputs.data_dir }}"
+          fi
+
+          if [ -z "${{ inputs.output_dir }}" ]; then
+            OUTPUT_DIR="${GITHUB_WORKSPACE}/output/${RECONSTRUCTION_ID}"
+          else
+            OUTPUT_DIR="${{ inputs.output_dir }}"
+          fi
+
+          if [ -z "${{ inputs.web_data_dir }}" ]; then
+            WEB_DATA_DIR="${GITHUB_WORKSPACE}/presto-viz/web_assets"
+          else
+            WEB_DATA_DIR="${{ inputs.web_data_dir }}"
+          fi
+
+          # Create directories
+          mkdir -p "$DATA_DIR"
+          mkdir -p "$OUTPUT_DIR"
+
+          # Move downloaded artifacts to data directory
+          if [ -d "./input_data" ]; then
+            echo "Moving input artifacts to data directory..."
+            cp -r ./input_data/* "$DATA_DIR/"
+            echo "Input files:"
+            ls -lh "$DATA_DIR"
+          fi
+
+          # Export for subsequent steps
+          echo "reconstruction_id=$RECONSTRUCTION_ID" >> $GITHUB_OUTPUT
+          echo "RECONSTRUCTION_ID=$RECONSTRUCTION_ID" >> $GITHUB_ENV
+          echo "DATA_DIR=$DATA_DIR" >> $GITHUB_ENV
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
+          echo "WEB_DATA_DIR=$WEB_DATA_DIR" >> $GITHUB_ENV
+
+          echo "=== Presto Visualization Processing ==="
+          echo "Reconstruction ID: $RECONSTRUCTION_ID"
+          echo "Data directory: $DATA_DIR"
+          echo "Output directory: $OUTPUT_DIR"
+          echo "Web data directory: $WEB_DATA_DIR"
+
+      - name: Set up Conda environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          python-version: '3.12'
+          environment-file: presto-viz/presto_env.yml
+          activate-environment: presto_env
+
+      - name: Install additional dependencies
+        shell: bash -el {0}
+        run: |
+          conda activate presto_env
+          pip install psutil
+
+      - name: Script 1 - Format data
+        shell: bash -el {0}
+        timeout-minutes: 15
+        run: |
+          cd presto-viz
+          conda activate presto_env
+
+          echo "=== Starting Script 1: Format Data ==="
+          echo "$(date): Starting 1_format_data" | tee -a "$OUTPUT_DIR/1_format_data_full.log"
+
+          python -u 1_format_data_daholocene_graphem.py "$DATA_DIR" 2>&1 | tee -a "$OUTPUT_DIR/1_format_data_full.log"
+
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "$(date): Script 1 exited with code: $EXIT_CODE" | tee -a "$OUTPUT_DIR/1_format_data_full.log"
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "ERROR - Script 1 failed with exit code: $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+          echo "$(date): SUCCESS - Script 1 completed successfully" | tee -a "$OUTPUT_DIR/1_format_data_full.log"
+
+      - name: Script 2 - Make maps and time series
+        shell: bash -el {0}
+        timeout-minutes: 120
+        run: |
+          cd presto-viz
+          conda activate presto_env
+
+          echo "=== Starting Script 2: Make Maps and Time Series ==="
+          echo "$(date): Starting 2_make_maps" | tee -a "$OUTPUT_DIR/2_make_maps_full.log"
+          echo "=== Starting Script 2 with resource monitoring ===" | tee -a "$OUTPUT_DIR/resource_monitor.log"
+
+          # Monitor system resources
+          echo "Memory before start:" >> "$OUTPUT_DIR/resource_monitor.log"
+          free -h >> "$OUTPUT_DIR/resource_monitor.log"
+
+          python -u 2_make_maps_and_ts.py "$DATA_DIR" "$OUTPUT_DIR" 2>&1 | tee -a "$OUTPUT_DIR/2_make_maps_full.log"
+
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "$(date): Script 2 exited with code: $EXIT_CODE" | tee -a "$OUTPUT_DIR/2_make_maps_full.log"
+          echo "Script 2 exit code: $EXIT_CODE" | tee -a "$OUTPUT_DIR/resource_monitor.log"
+
+          # Monitor system resources after
+          echo "Memory after completion:" >> "$OUTPUT_DIR/resource_monitor.log"
+          free -h >> "$OUTPUT_DIR/resource_monitor.log"
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "ERROR - Script 2 failed with exit code: $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+          echo "$(date): SUCCESS - Script 2 completed successfully" | tee -a "$OUTPUT_DIR/2_make_maps_full.log"
+
+      - name: Script 3 - Make HTML file
+        shell: bash -el {0}
+        timeout-minutes: 10
+        run: |
+          cd presto-viz
+          conda activate presto_env
+
+          echo "=== Starting Script 3: Make HTML File ==="
+          echo "$(date): Starting 3_make_html" | tee -a "$OUTPUT_DIR/3_make_html_full.log"
+
+          python -u 3_make_html_file.py "$DATA_DIR" "$OUTPUT_DIR" "$WEB_DATA_DIR" 2>&1 | tee -a "$OUTPUT_DIR/3_make_html_full.log"
+
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "$(date): Script 3 exited with code: $EXIT_CODE" | tee -a "$OUTPUT_DIR/3_make_html_full.log"
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "ERROR - Script 3 failed with exit code: $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+          echo "$(date): SUCCESS - Script 3 completed successfully" | tee -a "$OUTPUT_DIR/3_make_html_full.log"
+
+      - name: Processing Complete
+        shell: bash -el {0}
+        if: success()
+        run: |
+          echo "=== All processing complete. Visualizations are stored in $OUTPUT_DIR ==="
+
+          # List output files
+          echo "Output files:"
+          ls -lh "$OUTPUT_DIR" || true
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: presto-viz-logs-${{ env.RECONSTRUCTION_ID }}
+          path: |
+            ${{ env.OUTPUT_DIR }}/*.log
+          retention-days: 30
+
+      - name: Upload visualization outputs
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: presto-viz-output-${{ env.RECONSTRUCTION_ID }}
+          path: ${{ env.OUTPUT_DIR }}
+          retention-days: 30
