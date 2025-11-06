@@ -70,7 +70,7 @@ if os.path.exists(output_dir_full) == False: os.makedirs(output_dir_full)
 print(' ===== STARTING script 2: Making maps and time series for '+str(filename_txt)+' =====')
 
 print('Loading '+filename_txt)
-data_xarray = xr.open_dataset(data_dir+filename_txt+'.nc')
+data_xarray = xr.open_dataset(data_dir+'/'+filename_txt+'.nc')
 var_spatial_mean    = data_xarray[var_txt+'_spatial_mean']
 var_spatial_members = data_xarray[var_txt+'_spatial_members']
 var_global_mean     = data_xarray[var_txt+'_global_mean'].values
