@@ -45,7 +45,7 @@ elif any('test-run' in f for f in nc_files) or os.path.exists(data_dir + 'test-r
     print(f"Detected: GraphEM reconstruction (via test-run)")
 else:
     # Assume CFR/LMR2 format - treat as GraphEM-like
-    dataset_txt = 'cfr'
+    dataset_txt = 'lmr'
     version_txt = data_dir.rstrip('/').split('/')[-1]
     print(f"Detected: CFR/LMR2 reconstruction (treating as generic format)")
 
@@ -56,7 +56,7 @@ quantity_txt = 'Annual'
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
 print(f' ===== STARTING script 1: Reformatting data for {filename_txt} =====')
 
-if dataset_txt == 'cfr':
+if dataset_txt == 'lmr':
     #
     ### LOAD CFR/LMR2 DATA
     #
@@ -158,7 +158,7 @@ if dataset_txt == 'cfr':
             options_list = ['No configuration file found']
 
     except Exception as e:
-        print(f"Error processing CFR data: {e}")
+        print(f"Error processing lmr data: {e}")
         print("Data variables available:", list(data_xarray.data_vars))
         raise
 
