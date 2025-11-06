@@ -171,13 +171,11 @@ if dataset_txt == 'cfr':
 
     if var_spatial_members.ndim == 3:  # (ens, lat, lon) - no time
         var_spatial_members = np.expand_dims(var_spatial_members, axis=1)  # Add time dimension
-    if var_spatial_members.ndim == 4:  # (ens, time, lat, lon)
-        var_spatial_members = np.swapaxes(var_spatial_members, 0, 1)  # -> (time, ens, lat, lon)
-        var_spatial_members = np.expand_dims(var_spatial_members, axis=0)  # Add method dimension
+if var_spatial_members.ndim == 4:  # (ens, time, lat, lon)
+    var_spatial_members = np.expand_dims(var_spatial_members, axis=0)  # Add method dimension -> (method, ens, time, lat, lon)
 
-    if var_global_members.ndim == 2:  # (ens, time)
-        var_global_members = np.swapaxes(var_global_members, 0, 1)  # -> (time, ens)
-        var_global_members = np.expand_dims(var_global_members, axis=0)  # Add method dimension
+if var_global_members.ndim == 2:  # (ens, time)
+    var_global_members = np.expand_dims(var_global_members, axis=0)  # Add method dimension -> (method, ens, time)
 
     var_global_mean = np.mean(var_global_members, axis=1)
 
