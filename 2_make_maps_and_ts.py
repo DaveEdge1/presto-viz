@@ -368,7 +368,13 @@ if map_type == 'contourf':
     var_spatial_with_cyclic = []
     lon_cyclic = None
     for idx in range(len(time_var)):
-        var_cyc, lon_cyc = cutil.add_cyclic_point(var_spatial_mean_allmethods[idx,:,:], coord=lon)
+        try:
+            var_cyc, lon_cyc = cutil.add_cyclic_point(
+                var_spatial_mean_allmethods[idx,:,:], coord=lon)
+        except ValueError as e:
+            print(f'Warning: Could not add cyclic point: {e}. Using data as-is.')
+            var_cyc = var_spatial_mean_allmethods[idx,:,:]
+            lon_cyc = lon
         var_spatial_with_cyclic.append(var_cyc)
         if lon_cyclic is None:
             lon_cyclic = lon_cyc  # Same for all timesteps
@@ -532,9 +538,13 @@ print("Step 1: Making maps and info panels with parallel workers (4 processes)")
 all_args = []
 for i, time in enumerate(time_var):
     if map_type == "contourf":
-        var_cyclic, lon_cyclic = cutil.add_cyclic_point(
-            var_spatial_mean_allmethods[i,:,:], coord=lon
-        )
+        try:
+            var_cyclic, lon_cyclic = cutil.add_cyclic_point(
+                var_spatial_mean_allmethods[i,:,:], coord=lon)
+        except ValueError as e:
+            print(f'Warning: Could not add cyclic point: {e}. Using data as-is.')
+            var_cyclic = var_spatial_mean_allmethods[i,:,:]
+            lon_cyclic = lon
     elif map_type == "pcolormesh":
         var_cyclic = var_spatial_mean_allmethods[i,:,:]
         lon_cyclic = lon  # not used
