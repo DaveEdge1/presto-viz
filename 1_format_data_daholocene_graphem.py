@@ -222,7 +222,7 @@ if var_global_members.ndim == 2:  # (ens, time)
     )
 
     ### SAVE DATA
-    output_file = data_dir + filename_txt + '.nc'
+    output_file = os.path.join(data_dir, filename_txt + '.nc')
     data_xarray_output.to_netcdf(output_file)
     print(f' ===== FINISHED script 1: Data reformatted and saved to: {output_file} =====')
 
