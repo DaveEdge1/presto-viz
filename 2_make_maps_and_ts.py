@@ -702,7 +702,17 @@ if make_regional_ts:
     else:
         #
         # Make a mask for the different regions
-        mask_3D = ar6_all.mask_3D(lon,lat)
+        try:
+            mask_3D = ar6_all.mask_3D(lon, lat)
+        except ValueError as e:
+            if "equal longitude coordinates" in str(e):
+                print(f'Warning: Longitude coordinates appear to wrap. Removing last point.')
+                lon_adjusted = lon[:-1]  # Remove duplicate point at 360°
+                mask_3D = ar6_all.mask_3D(lon_adjusted, lat)
+                # Must also slice the spatial data to match
+                var_spatial_mean = var_spatial_mean[:,:,:,:-1]
+            else:
+                raise
         #
         # Calculate weights for every gridcell
         lon_2d,lat_2d = np.meshgrid(lon,lat)
