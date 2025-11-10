@@ -34,11 +34,12 @@ var_txt      = 'tas'
 quantity_txt = 'Annual'
 if   'holocene_da' in data_dir: dataset_txt = 'daholocene'; version_txt = data_dir.split('_holocene_da')[0].split('/')[-1]
 elif 'graph_em'    in data_dir: dataset_txt = 'graphem';    version_txt = data_dir.split('_graph_em')[0].split('/')[-1]
+else:                           dataset_txt = 'lmr';        version_txt = data_dir.rstrip('/').split('/')[-1]
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
 output_dir_full = output_dir+'viz/'
 print(' ===== STARTING script 3: Making html and zipping '+str(filename_txt)+' =====')
 
-data_xarray = xr.open_dataset(data_dir+filename_txt+'.nc')
+data_xarray = xr.open_dataset(data_dir+'/'+filename_txt+'.nc')
 method       = data_xarray['method'].values
 age          = data_xarray['age'].values
 lat          = data_xarray['lat'].values
@@ -54,6 +55,7 @@ year = 1950-age
 # Set parameters based on the dataset
 if   dataset_txt == 'daholocene': time_units = 'yr BP'
 elif dataset_txt == 'graphem':    time_units = 'CE'
+elif dataset_txt == 'lmr':        time_units = 'yr BP' if min(year) <= -2000 else 'CE'
 
 # Set time values
 if time_units == 'yr BP':
