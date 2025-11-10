@@ -21,12 +21,37 @@ data_dir     = sys.argv[1]
 output_dir   = sys.argv[2]
 web_data_dir = sys.argv[3]
 
+# Ensure directories are absolute paths
+data_dir = os.path.abspath(data_dir)
+output_dir = os.path.abspath(output_dir)
+
+# Handle web_data_dir specially: if it's relative, resolve it relative to this script's location
+# This is important for cross-repo usage where working directory may vary
+if not os.path.isabs(web_data_dir):
+    # Get the directory where this script is located (presto-viz repo)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    web_data_dir_resolved = os.path.abspath(os.path.join(script_dir, web_data_dir))
+    print(f'Note: web_data_dir was relative ("{web_data_dir}"), resolving relative to script location')
+    print(f'  Script location: {script_dir}')
+    print(f'  Resolved to: {web_data_dir_resolved}')
+    web_data_dir = web_data_dir_resolved
+else:
+    web_data_dir = os.path.abspath(web_data_dir)
+
+print(f'Data directory: {data_dir}')
+print(f'Output directory: {output_dir}')
+print(f'Web assets directory: {web_data_dir}')
+
 
 #%% LOAD DATA
 
 
 # Load the visualizer template
-with open(web_data_dir+'visualizer_template.html') as f:
+template_file = os.path.join(web_data_dir, 'visualizer_template.html')
+print(f'Loading template from: {template_file}')
+if not os.path.exists(template_file):
+    raise FileNotFoundError(f'Template file not found: {template_file}')
+with open(template_file) as f:
     lines_template = f.readlines()
 
 # Load reconstruction
@@ -36,10 +61,17 @@ if   'holocene_da' in data_dir: dataset_txt = 'daholocene'; version_txt = data_d
 elif 'graph_em'    in data_dir: dataset_txt = 'graphem';    version_txt = data_dir.split('_graph_em')[0].split('/')[-1]
 else:                           dataset_txt = 'lmr';        version_txt = data_dir.rstrip('/').split('/')[-1]
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
-output_dir_full = output_dir+'/viz/'
+
+# Construct output directory path robustly
+output_dir_full = os.path.join(output_dir, 'viz')
 print(' ===== STARTING script 3: Making html and zipping '+str(filename_txt)+' =====')
 
-data_xarray = xr.open_dataset(data_dir+'/'+filename_txt+'.nc')
+# Load reconstruction data
+data_file_path = os.path.join(data_dir, filename_txt + '.nc')
+print(f'Loading data from: {data_file_path}')
+if not os.path.exists(data_file_path):
+    raise FileNotFoundError(f'Data file not found: {data_file_path}')
+data_xarray = xr.open_dataset(data_file_path)
 method       = data_xarray['method'].values
 age          = data_xarray['age'].values
 lat          = data_xarray['lat'].values
@@ -109,19 +141,40 @@ for line in lines_template:
 #%% OUTPUT
 
 # Output the visualizer template
-with open(output_dir_full+'visualizer.html','w') as f:
+visualizer_file = os.path.join(output_dir_full, 'visualizer.html')
+print(f'Writing visualizer HTML to: {visualizer_file}')
+with open(visualizer_file, 'w') as f:
     for line in lines_output:
         f.write(line)
 
 
 #%% MOVE FILES AND CREATE ZIP
 
-# Move files and create zip
-os.system('cp '+web_data_dir+'assets/* '+output_dir_full+'assets/')          # Add the general assets to the visualization folder.
-os.chdir(output_dir_full)                                                    # Change directory to the visualization folder.
-os.system('zip -r '+output_dir+'viz_'+dataset_txt+'_'+version_txt+'.zip *')  # Zip everything in the visualization folder.
+# Verify that script 2 output exists
+script2_output = os.path.join(output_dir, 'viz', 'assets', dataset_txt)
+print(f'Checking for script 2 output in: {script2_output}')
+if not os.path.exists(script2_output):
+    raise FileNotFoundError(f'Script 2 output not found. Expected files in: {script2_output}')
+print(f'✓ Script 2 output found with {len(os.listdir(script2_output))} files')
 
-print(' ===== FINISHED script 3: Zipped file saved to: '+output_dir+'viz_'+dataset_txt+'_'+version_txt+'.zip =====')
+# Copy web assets (CSS, JS, images, etc.) to the viz folder
+web_assets_src = os.path.join(web_data_dir, 'assets')
+web_assets_dest = os.path.join(output_dir_full, 'assets')
+print(f'Copying web assets from {web_assets_src} to {web_assets_dest}')
+if not os.path.exists(web_assets_src):
+    raise FileNotFoundError(f'Web assets not found: {web_assets_src}')
+os.system(f'mkdir -p "{web_assets_dest}"')
+copy_result = os.system(f'cp -r "{web_assets_src}"/* "{web_assets_dest}/"')
+if copy_result != 0:
+    print(f'WARNING: Failed to copy web assets (exit code: {copy_result})')
+
+# Create zip file
+os.chdir(output_dir_full)
+zip_file = os.path.join(output_dir, f'viz_{dataset_txt}_{version_txt}.zip')
+print(f'Creating zip file: {zip_file}')
+os.system(f'zip -r "{zip_file}" *')
+
+print(f' ===== FINISHED script 3: Zipped file saved to: {zip_file} =====')
 
 
 #%% COMMIT TO GIT (OPTIONAL, FOR GITHUB PAGES)
@@ -144,7 +197,7 @@ if should_commit:
     viz_output_path = os.environ.get('VIZ_OUTPUT_PATH', 'docs')  # Changed default to 'docs' for GitHub Pages
 
     # Resolve absolute paths
-    viz_source = os.path.abspath(output_dir + '/viz/')
+    viz_source = os.path.abspath(os.path.join(output_dir, 'viz'))
     viz_dest = os.path.abspath(os.path.join(git_repo_root, viz_output_path))
 
     print(f'Source: {viz_source}')
