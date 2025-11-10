@@ -21,10 +21,22 @@ data_dir     = sys.argv[1]
 output_dir   = sys.argv[2]
 web_data_dir = sys.argv[3]
 
-# Ensure directories are absolute paths and exist
+# Ensure directories are absolute paths
 data_dir = os.path.abspath(data_dir)
 output_dir = os.path.abspath(output_dir)
-web_data_dir = os.path.abspath(web_data_dir)
+
+# Handle web_data_dir specially: if it's relative, resolve it relative to this script's location
+# This is important for cross-repo usage where working directory may vary
+if not os.path.isabs(web_data_dir):
+    # Get the directory where this script is located (presto-viz repo)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    web_data_dir_resolved = os.path.abspath(os.path.join(script_dir, web_data_dir))
+    print(f'Note: web_data_dir was relative ("{web_data_dir}"), resolving relative to script location')
+    print(f'  Script location: {script_dir}')
+    print(f'  Resolved to: {web_data_dir_resolved}')
+    web_data_dir = web_data_dir_resolved
+else:
+    web_data_dir = os.path.abspath(web_data_dir)
 
 print(f'Data directory: {data_dir}')
 print(f'Output directory: {output_dir}')
