@@ -130,40 +130,58 @@ print(' ===== FINISHED script 3: Zipped file saved to: '+output_dir+'viz_'+datas
 should_commit = os.environ.get('COMMIT_VIZ_OUTPUT', 'false').lower() == 'true'
 
 if should_commit:
-    print(' ===== Committing visualization output to git =====')
+    print(' ===== Preparing visualization output for git commit =====')
 
-    # Get git configuration from environment variables (with defaults)
-    git_branch = os.environ.get('VIZ_GIT_BRANCH', 'gh-pages')  # Default to gh-pages branch
+    # Get configuration from environment variables (REQUIRED for cross-repo usage)
+    git_repo_root = os.environ.get('GIT_REPO_ROOT')
+    if not git_repo_root:
+        print('ERROR: GIT_REPO_ROOT environment variable must be set when COMMIT_VIZ_OUTPUT=true')
+        print('Example: export GIT_REPO_ROOT=/path/to/LMR2')
+        sys.exit(1)
+
+    git_branch = os.environ.get('VIZ_GIT_BRANCH', 'gh-pages')
     git_commit_msg = os.environ.get('VIZ_COMMIT_MSG', f'Update visualization: {dataset_txt} v{version_txt}')
-    viz_output_path = os.environ.get('VIZ_OUTPUT_PATH', 'viz')  # Path within repo where viz files should go
+    viz_output_path = os.environ.get('VIZ_OUTPUT_PATH', 'docs')  # Changed default to 'docs' for GitHub Pages
 
-    # Change back to the repo root (assumed to be output_dir's parent or specified)
-    repo_root = os.environ.get('GIT_REPO_ROOT', os.path.dirname(output_dir.rstrip('/')))
-    os.chdir(repo_root)
-    print(f'Changed to repo root: {repo_root}')
+    # Resolve absolute paths
+    viz_source = os.path.abspath(output_dir + '/viz/')
+    viz_dest = os.path.abspath(os.path.join(git_repo_root, viz_output_path))
 
-    # Copy viz output to the desired location in the repo
-    viz_source = output_dir + '/viz/'
-    viz_dest = os.path.join(repo_root, viz_output_path)
-    print(f'Copying {viz_source} to {viz_dest}')
-    os.system(f'mkdir -p {viz_dest}')
-    os.system(f'cp -r {viz_source}* {viz_dest}/')
+    print(f'Source: {viz_source}')
+    print(f'Destination: {viz_dest}')
+    print(f'Target repo: {git_repo_root}')
+    print(f'Target branch: {git_branch}')
+
+    # Create destination directory
+    os.system(f'mkdir -p "{viz_dest}"')
+
+    # Copy visualization output to target repo location
+    print(f'Copying visualization files...')
+    copy_result = os.system(f'cp -r "{viz_source}"/* "{viz_dest}/"')
+
+    if copy_result != 0:
+        print('ERROR: Failed to copy visualization files')
+        sys.exit(1)
+
+    # Change to target repository for git operations
+    os.chdir(git_repo_root)
+    print(f'Changed to git repository: {os.getcwd()}')
 
     # Git operations
     print(f'Staging changes in {viz_output_path}/')
-    os.system(f'git add {viz_output_path}/')
+    os.system(f'git add "{viz_output_path}/"')
 
-    print(f'Creating commit with message: {git_commit_msg}')
+    print(f'Creating commit: {git_commit_msg}')
     commit_result = os.system(f'git commit -m "{git_commit_msg}"')
 
     if commit_result == 0:
         print(f'Commit successful. Pushing to {git_branch}...')
-        push_result = os.system(f'git push origin {git_branch}')
+        push_result = os.system(f'git push origin "{git_branch}"')
         if push_result == 0:
             print(' ===== Successfully pushed visualization to GitHub Pages =====')
         else:
-            print(' ===== WARNING: Git push failed =====')
+            print(' ===== WARNING: Git push failed. Check permissions and branch protection. =====')
     else:
-        print(' ===== No changes to commit or commit failed =====')
+        print(' ===== No changes to commit (output may be identical to previous version) =====')
 else:
     print(' ===== Skipping git commit (set COMMIT_VIZ_OUTPUT=true to enable) =====')
