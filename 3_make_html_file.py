@@ -122,3 +122,48 @@ os.chdir(output_dir_full)                                                    # C
 os.system('zip -r '+output_dir+'viz_'+dataset_txt+'_'+version_txt+'.zip *')  # Zip everything in the visualization folder.
 
 print(' ===== FINISHED script 3: Zipped file saved to: '+output_dir+'viz_'+dataset_txt+'_'+version_txt+'.zip =====')
+
+
+#%% COMMIT TO GIT (OPTIONAL, FOR GITHUB PAGES)
+
+# Check if we should commit output (controlled by environment variable)
+should_commit = os.environ.get('COMMIT_VIZ_OUTPUT', 'false').lower() == 'true'
+
+if should_commit:
+    print(' ===== Committing visualization output to git =====')
+
+    # Get git configuration from environment variables (with defaults)
+    git_branch = os.environ.get('VIZ_GIT_BRANCH', 'gh-pages')  # Default to gh-pages branch
+    git_commit_msg = os.environ.get('VIZ_COMMIT_MSG', f'Update visualization: {dataset_txt} v{version_txt}')
+    viz_output_path = os.environ.get('VIZ_OUTPUT_PATH', 'viz')  # Path within repo where viz files should go
+
+    # Change back to the repo root (assumed to be output_dir's parent or specified)
+    repo_root = os.environ.get('GIT_REPO_ROOT', os.path.dirname(output_dir.rstrip('/')))
+    os.chdir(repo_root)
+    print(f'Changed to repo root: {repo_root}')
+
+    # Copy viz output to the desired location in the repo
+    viz_source = output_dir + '/viz/'
+    viz_dest = os.path.join(repo_root, viz_output_path)
+    print(f'Copying {viz_source} to {viz_dest}')
+    os.system(f'mkdir -p {viz_dest}')
+    os.system(f'cp -r {viz_source}* {viz_dest}/')
+
+    # Git operations
+    print(f'Staging changes in {viz_output_path}/')
+    os.system(f'git add {viz_output_path}/')
+
+    print(f'Creating commit with message: {git_commit_msg}')
+    commit_result = os.system(f'git commit -m "{git_commit_msg}"')
+
+    if commit_result == 0:
+        print(f'Commit successful. Pushing to {git_branch}...')
+        push_result = os.system(f'git push origin {git_branch}')
+        if push_result == 0:
+            print(' ===== Successfully pushed visualization to GitHub Pages =====')
+        else:
+            print(' ===== WARNING: Git push failed =====')
+    else:
+        print(' ===== No changes to commit or commit failed =====')
+else:
+    print(' ===== Skipping git commit (set COMMIT_VIZ_OUTPUT=true to enable) =====')
