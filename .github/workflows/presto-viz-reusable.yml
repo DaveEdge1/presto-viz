@@ -25,7 +25,7 @@ on:
         description: 'Web assets directory path'
         required: false
         type: string
-        default: 'viz/web_assets/'
+        default: 'web_assets/'
     outputs:
       visualization_artifact:
         description: 'Name of the visualization output artifact'
