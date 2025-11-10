@@ -55,7 +55,7 @@ year = 1950-age
 # Set parameters based on the dataset
 if   dataset_txt == 'daholocene': time_units = 'yr BP'
 elif dataset_txt == 'graphem':    time_units = 'CE'
-elif dataset_txt == 'lmr':        time_units = 'yr BP' if min(year) <= -2000 else 'CE'
+elif dataset_txt == 'lmr':        time_units = 'CE'
 
 # Set time values
 if time_units == 'yr BP':
