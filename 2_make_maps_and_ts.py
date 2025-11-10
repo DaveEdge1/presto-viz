@@ -711,6 +711,8 @@ if make_regional_ts:
                 mask_3D = ar6_all.mask_3D(lon_adjusted, lat)
                 # Must also slice the spatial data to match
                 var_spatial_mean = var_spatial_mean[:,:,:,:-1]
+                var_spatial_lowerbound = var_spatial_lowerbound[:,:,:,:-1]
+                var_spatial_upperbound = var_spatial_upperbound[:,:,:,:-1]
             else:
                 raise
         #
