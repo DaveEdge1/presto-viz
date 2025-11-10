@@ -25,6 +25,7 @@ build/
 *.jpg
 *.jpeg
 *.html
+!web_assets/visualizer_template.html
 *.log
 
 # IDE

@@ -109,13 +109,13 @@ jobs:
           # Define paths
           DATA_DIR="${{ github.workspace }}/data/CFR_Run_17_Reviz_22"
           OUTPUT_DIR="${{ github.workspace }}/output/CFR_Run_17_Reviz_22"
-          WEB_DATA_DIR="${{ github.workspace }}/presto-viz/viz/web_assets/"
+          WEB_DATA_DIR="${{ github.workspace }}/presto-viz/web_assets"  # Absolute path
 
           # Run the three scripts
           cd presto-viz
           python 1_format_data_daholocene_graphem.py "$DATA_DIR"
           python 2_make_maps_and_ts.py "$DATA_DIR" "$OUTPUT_DIR"
-          python 3_make_html_file.py "$DATA_DIR" "$OUTPUT_DIR" "$WEB_DATA_DIR"
+          python 3_make_html_file.py "$DATA_DIR" "$OUTPUT_DIR" "web_assets"  # Or use $WEB_DATA_DIR for absolute path
 
           # Note: Script 3 will automatically commit to LMR2 repo and push
 

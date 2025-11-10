@@ -31,11 +31,11 @@ Script 3 now intelligently handles the `web_data_dir` parameter:
     cd presto-viz
     python 1_format_data_daholocene_graphem.py "$DATA_DIR"
     python 2_make_maps_and_ts.py "$DATA_DIR" "$OUTPUT_DIR"
-    python 3_make_html_file.py "$DATA_DIR" "$OUTPUT_DIR" "viz/web_assets"
+    python 3_make_html_file.py "$DATA_DIR" "$OUTPUT_DIR" "web_assets"
 ```
 
 **Pros:** Simple, works from any directory
-**Why it works:** Script 3 resolves `viz/web_assets` relative to its own location
+**Why it works:** Script 3 resolves `web_assets` relative to its own location
 
 ### Pattern 2: Use Absolute Paths (Most Explicit)
 
@@ -44,7 +44,7 @@ Script 3 now intelligently handles the `web_data_dir` parameter:
   run: |
     DATA_DIR="${{ github.workspace }}/data/CFR_Run_17_Reviz_22"
     OUTPUT_DIR="${{ github.workspace }}/output/CFR_Run_17_Reviz_22"
-    WEB_DATA_DIR="${{ github.workspace }}/presto-viz/viz/web_assets"
+    WEB_DATA_DIR="${{ github.workspace }}/presto-viz/web_assets"
 
     python presto-viz/1_format_data_daholocene_graphem.py "$DATA_DIR"
     python presto-viz/2_make_maps_and_ts.py "$DATA_DIR" "$OUTPUT_DIR"
@@ -56,15 +56,15 @@ Script 3 now intelligently handles the `web_data_dir` parameter:
 
 ## Common Pitfalls to Avoid
 
-### ❌ DON'T: Use relative path from wrong directory
+### ❌ DON'T: Use wrong relative path
 
 ```yaml
-# Running from LMR2 root, passing relative path
+# Using incorrect path - note there is NO viz/ subdirectory!
 - run: python presto-viz/3_make_html_file.py "$DATA_DIR" "$OUTPUT_DIR" "viz/web_assets"
 ```
 
-**Issue:** OLD behavior would resolve `viz/web_assets` to `/home/runner/work/LMR2/LMR2/viz/web_assets` ❌
-**Fixed:** NEW behavior resolves it relative to script location: `/home/runner/work/LMR2/LMR2/presto-viz/viz/web_assets` ✅
+**Issue:** The correct path is `web_assets` not `viz/web_assets` ❌
+**Fixed:** Use `web_assets` relative path: `/home/runner/work/LMR2/LMR2/presto-viz/web_assets` ✅
 
 ### ❌ DON'T: Mix working directories
 
@@ -82,12 +82,12 @@ Script 3 now intelligently handles the `web_data_dir` parameter:
 Script 3 now prints resolved paths, making it easy to verify:
 
 ```
-Note: web_data_dir was relative ("viz/web_assets"), resolving relative to script location
+Note: web_data_dir was relative ("web_assets"), resolving relative to script location
   Script location: /home/runner/work/LMR2/LMR2/presto-viz
-  Resolved to: /home/runner/work/LMR2/LMR2/presto-viz/viz/web_assets
+  Resolved to: /home/runner/work/LMR2/LMR2/presto-viz/web_assets
 Data directory: /home/runner/work/LMR2/LMR2/data/CFR_Run_17_Reviz_22
 Output directory: /home/runner/work/LMR2/LMR2/output/CFR_Run_17_Reviz_22
-Web assets directory: /home/runner/work/LMR2/LMR2/presto-viz/viz/web_assets
+Web assets directory: /home/runner/work/LMR2/LMR2/presto-viz/web_assets
 ```
 
 If you see unexpected paths, check your workflow configuration.
@@ -118,12 +118,13 @@ If you see unexpected paths, check your workflow configuration.
 
 ## Troubleshooting
 
-**Error:** `FileNotFoundError: Template file not found: /wrong/path/viz/web_assets/visualizer_template.html`
+**Error:** `FileNotFoundError: Template file not found: /path/to/presto-viz/viz/web_assets/visualizer_template.html`
 
-**Solution:** Check that:
+**Solution:** The path is wrong! There is no `viz/` subdirectory. Check that:
 1. presto-viz repository is checked out correctly
-2. You're passing `viz/web_assets` (relative) or the correct absolute path
-3. Check the diagnostic output showing resolved paths
+2. You're passing `web_assets` (NOT `viz/web_assets`)
+3. The template file exists at `presto-viz/web_assets/visualizer_template.html`
+4. Check the diagnostic output showing resolved paths
 
 **Error:** `FileNotFoundError: Script 2 output not found`
 
