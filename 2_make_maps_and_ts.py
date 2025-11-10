@@ -707,12 +707,14 @@ if make_regional_ts:
         except ValueError as e:
             if "equal longitude coordinates" in str(e):
                 print(f'Warning: Longitude coordinates appear to wrap. Removing last point.')
-                lon_adjusted = lon[:-1]  # Remove duplicate point at 360°
-                mask_3D = ar6_all.mask_3D(lon_adjusted, lat)
-                # Must also slice the spatial data to match
+                # Update lon array directly so all subsequent code uses adjusted coordinates
+                lon = lon[:-1]
+                # Slice all three spatial data arrays to match
                 var_spatial_mean = var_spatial_mean[:,:,:,:-1]
                 var_spatial_lowerbound = var_spatial_lowerbound[:,:,:,:-1]
                 var_spatial_upperbound = var_spatial_upperbound[:,:,:,:-1]
+                # Now create mask with updated coordinates
+                mask_3D = ar6_all.mask_3D(lon, lat)
             else:
                 raise
         #
