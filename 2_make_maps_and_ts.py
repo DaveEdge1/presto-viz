@@ -61,16 +61,25 @@ if   'holocene_da' in data_dir: dataset_txt = 'daholocene'; version_txt = data_d
 elif 'graph_em'    in data_dir: dataset_txt = 'graphem';    version_txt = data_dir.split('_graph_em')[0].split('/')[-1]
 else:                           dataset_txt = 'lmr';        version_txt = data_dir.rstrip('/').split('/')[-1]
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
-output_dir_full = output_dir+'/viz/'
-if os.path.exists(output_dir_full) == False: os.makedirs(output_dir_full)
-output_dir_full = output_dir_full+'assets/'
-if os.path.exists(output_dir_full) == False: os.makedirs(output_dir_full)
-output_dir_full = output_dir_full+dataset_txt+'/'
-if os.path.exists(output_dir_full) == False: os.makedirs(output_dir_full)
+
+# Construct output directory path robustly
+output_dir_full = os.path.join(output_dir, 'viz')
+if not os.path.exists(output_dir_full): os.makedirs(output_dir_full)
+output_dir_full = os.path.join(output_dir_full, 'assets')
+if not os.path.exists(output_dir_full): os.makedirs(output_dir_full)
+output_dir_full = os.path.join(output_dir_full, dataset_txt)
+if not os.path.exists(output_dir_full): os.makedirs(output_dir_full)
+# Ensure path ends with separator for consistency
+output_dir_full = output_dir_full + os.sep
+
 print(' ===== STARTING script 2: Making maps and time series for '+str(filename_txt)+' =====')
 
-print('Loading '+filename_txt)
-data_xarray = xr.open_dataset(data_dir+'/'+filename_txt+'.nc')
+# Load data with robust path construction
+data_file_path = os.path.join(data_dir, filename_txt + '.nc')
+print('Loading '+data_file_path)
+if not os.path.exists(data_file_path):
+    raise FileNotFoundError(f'Data file not found: {data_file_path}')
+data_xarray = xr.open_dataset(data_file_path)
 var_spatial_mean    = data_xarray[var_txt+'_spatial_mean']
 var_spatial_members = data_xarray[var_txt+'_spatial_members']
 var_global_mean     = data_xarray[var_txt+'_global_mean'].values
