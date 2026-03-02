@@ -584,6 +584,14 @@ for i, time in enumerate(time_var):
                   extra_txt_x, extra_txt_y, time_unit_txt)
     all_args.append(args_tuple)
 
+# Force cartopy to download + cache Natural Earth shapefiles in the main process
+# BEFORE spawning workers — prevents race condition where all 4 workers try to
+# download simultaneously, corrupting the shapefile cache.
+import cartopy.io.shapereader as shpreader
+print("Pre-fetching Natural Earth coastline data to populate cache...")
+shpreader.natural_earth(resolution="50m", category="physical", name="coastline")
+print("Natural Earth data ready")
+
 print(f"Prepared {len(all_args)} tasks, starting parallel processing...")
 
 # Process in parallel with a pool of 4 workers
