@@ -148,6 +148,14 @@ with open(visualizer_file, 'w') as f:
         f.write(line)
 
 
+# Write index.html inside viz/ so GitHub Pages serves it at the docs/ root URL
+# (visualize.yml renames viz/ -> docs/ before upload-pages-artifact)
+index_file = os.path.join(output_dir_full, "index.html")
+print(f"Writing index.html redirect to: {index_file}")
+with open(index_file, "w") as f:
+    f.write("<meta http-equiv=\"refresh\" content=\"0; url=visualizer.html\">
+")
+
 #%% MOVE FILES AND CREATE ZIP
 
 # Verify that script 2 output exists
