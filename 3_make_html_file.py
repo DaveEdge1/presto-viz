@@ -153,8 +153,7 @@ with open(visualizer_file, 'w') as f:
 index_file = os.path.join(output_dir_full, "index.html")
 print(f"Writing index.html redirect to: {index_file}")
 with open(index_file, "w") as f:
-    f.write("<meta http-equiv=\"refresh\" content=\"0; url=visualizer.html\">
-")
+    f.write("<meta http-equiv=\"refresh\" content=\"0; url=visualizer.html\">\n")
 
 #%% MOVE FILES AND CREATE ZIP
 
