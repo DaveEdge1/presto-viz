@@ -158,6 +158,23 @@ jobs:
 
           echo "$(date): SUCCESS - Script 1 completed successfully" | tee -a "$OUTPUT_DIR/1_format_data_full.log"
 
+      - name: Pre-cache regionmask reference regions
+        shell: bash -el {0}
+        timeout-minutes: 5
+        run: |
+          CACHE_DIR="/home/runner/.cache/regionmask/v0.11.0"
+          mkdir -p "$CACHE_DIR"
+          FILE="$CACHE_DIR/IPCC-WGI-reference-regions-v4.zip"
+          if [ ! -f "$FILE" ]; then
+            echo "Pre-downloading regionmask reference regions..."
+            curl -L --retry 3 --max-time 120 \
+              -o "$FILE" \
+              https://github.com/regionmask/regionmask/raw/v0.11.0/data/IPCC-WGI-reference-regions-v4.zip
+            echo "Cached: $(ls -lh $FILE)"
+          else
+            echo "regionmask cache already present"
+          fi
+
       - name: Script 2 - Make maps and time series
         shell: bash -el {0}
         timeout-minutes: 120
