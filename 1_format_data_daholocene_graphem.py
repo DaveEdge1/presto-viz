@@ -90,12 +90,19 @@ if dataset_txt == 'lmr':
         # Get coordinates
         if 'time' in data_xarray:
             time_coord = data_xarray['time'].values
-            # Convert to age if needed
-            if 'units' in data_xarray['time'].attrs and 'since' in data_xarray['time'].attrs['units']:
-                # Assume modern (1950 reference)
-                age = 1950 - time_coord
+            # Convert to yr BP (age = 1950 - year_CE).
+            # CFR/LMR output stores time as integer CE years without a CF
+            # "since" epoch, so the "since" check alone is insufficient.
+            # Detect CE years by value range: if all values are plausibly
+            # in the Common Era (< 2200) treat as CE years and convert.
+            import numpy as _np
+            _tc = _np.array(time_coord, dtype=float)
+            if _np.nanmax(_tc) < 2200:
+                # CE years (e.g. 850-1850) -> convert to yr BP
+                age = 1950 - _tc
             else:
-                age = time_coord
+                # Already in yr BP or some other large-number convention
+                age = _tc
         elif 'age' in data_xarray:
             age = data_xarray['age'].values
         else:
