@@ -58,126 +58,53 @@ print(f' ===== STARTING script 1: Reformatting data for {filename_txt} =====')
 
 if dataset_txt == 'lmr':
     #
-    ### LOAD CFR/LMR2 DATA
+    ### LOAD CFR/LMR2 DATA  (combined across all seed runs)
     #
     print('=== Processing CFR/LMR2 Reconstruction ===')
 
-    # Find the main NetCDF file (first .nc file found)
-    if not nc_files:
-        raise FileNotFoundError(f"No NetCDF files found in {data_dir}")
+    combined_path = os.path.join(data_dir, 'combined_recon.nc')
+    if not os.path.exists(combined_path):
+        raise FileNotFoundError(
+            f'combined_recon.nc not found in {data_dir}. '
+            'Re-run the reconstruction to regenerate it with the latest cfr_main_code.py.')
 
-    data_filename = nc_files[0]
-    print(f"Loading: {data_filename}")
+    data = xr.open_dataset(combined_path)
+    print(f'Loaded combined_recon.nc: {dict(data.dims)}')
+    print(f'  tas shape:    {dict(data["tas"].sizes)}')
+    print(f'  tas_gm shape: {dict(data["tas_gm"].sizes)}')
 
-    data_xarray = xr.open_dataset(data_filename)
-    print("Dataset variables:", list(data_xarray.data_vars))
-    print("Dataset dimensions:", dict(data_xarray.dims))
+    # Spatial: combined file has tas (time, ens/seeds, lat, lon) from ReconRes.
+    # Reorder to (ens, time, lat, lon) for the ens-first convention expected below.
+    tas = data['tas'].values                         # (time, n_seeds, lat, lon)
+    var_spatial_members = np.moveaxis(tas, 1, 0)    # (n_seeds, time, lat, lon)
+    var_spatial_mean    = np.mean(var_spatial_members, axis=0)  # (time, lat, lon)
 
-    # Try to extract standard variables (adapt based on actual CFR output)
-    # Common variable names in LMR/CFR outputs
-    try:
-        # Try different possible variable names
-        if 'recon_tas_ens' in data_xarray:
-            var_spatial_members = data_xarray['recon_tas_ens'].values
-        elif 'tas_ens' in data_xarray:
-            var_spatial_members = data_xarray['tas_ens'].values
-        elif 'tas' in data_xarray:
-            # If only single field, expand to ensemble dimension
-            var_spatial_members = np.expand_dims(data_xarray['tas'].values, axis=0)
-        else:
-            raise KeyError("Could not find temperature field (tas/recon_tas_ens/tas_ens)")
+    # Global mean: combined file has tas_gm (time, total_ens) from ReconRes.
+    # Transpose to (total_ens, time) for the ens-first convention expected below.
+    var_global_members = data['tas_gm'].values.T    # (total_ens, time)
 
-        # Get coordinates
-        if 'time' in data_xarray:
-            time_coord = data_xarray['time'].values
-            # Convert to yr BP (age = 1950 - year_CE).
-            # CFR/LMR output stores time as integer CE years without a CF
-            # "since" epoch, so the "since" check alone is insufficient.
-            # Detect CE years by value range: if all values are plausibly
-            # in the Common Era (< 2200) treat as CE years and convert.
-            import numpy as _np
-            _tc = _np.array(time_coord, dtype=float)
-            if _np.nanmax(_tc) < 2200:
-                # CE years (e.g. 850-1850) -> convert to yr BP
-                age = 1950 - _tc
-            else:
-                # Already in yr BP or some other large-number convention
-                age = _tc
-        elif 'age' in data_xarray:
-            age = data_xarray['age'].values
-        else:
-            raise KeyError("Could not find time/age coordinate")
+    # Coordinates
+    lat = data['lat'].values
+    lon = data['lon'].values
 
-        lat = data_xarray['lat'].values
-        lon = data_xarray['lon'].values
+    # Time: CFR stores integer CE years; convert to yr BP (age = 1950 - year_CE)
+    time_coord = data['time'].values
+    age = 1950 - np.array(time_coord, dtype=float)  # e.g. 850-1850 CE -> 1100-100 yr BP
 
-        # Get or calculate ensemble mean
-        if 'recon_tas_mean' in data_xarray:
-            var_spatial_mean = data_xarray['recon_tas_mean'].values
-        else:
-            # Calculate from ensemble members
-            var_spatial_mean = np.mean(var_spatial_members, axis=0)
+    data.close()
 
-        # Get or calculate global mean
-        if 'recon_tas_global_mean' in data_xarray:
-            var_global_members = data_xarray['recon_tas_global_mean'].values
-        else:
-            # Calculate spatial average for each ensemble member
-            # Simple area-weighted mean (lat weighting)
-            lat_weights = np.cos(np.deg2rad(lat))
-            lat_weights_grid = lat_weights[:, np.newaxis] * np.ones_like(lon)[np.newaxis, :]
+    # Config options (lmr_configs.yml is included in the artifact when present)
+    config_file = os.path.join(data_dir, 'lmr_configs.yml')
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as f:
+            options = yaml.load(f, Loader=yaml.FullLoader)
+        options_list = [f'{k}: {v}' for k, v in options.items()]
+    else:
+        print(f'Note: no lmr_configs.yml in artifact; config options will be blank.')
+        options_list = ['No configuration file found']
 
-            n_ens = var_spatial_members.shape[0]
-            n_time = var_spatial_members.shape[1] if var_spatial_members.ndim == 4 else 1
-            var_global_members = np.zeros((n_ens, n_time if n_time > 1 else len(age)))
-
-            for i in range(n_ens):
-                if var_spatial_members.ndim == 4:  # (ens, time, lat, lon)
-                    for t in range(n_time):
-                        weighted_data = var_spatial_members[i, t, :, :] * lat_weights_grid
-                        var_global_members[i, t] = np.nanmean(weighted_data)
-                else:  # (ens, lat, lon)
-                    weighted_data = var_spatial_members[i, :, :] * lat_weights_grid
-                    var_global_members[i, :] = np.nanmean(weighted_data)
-
-        # Load configuration if available
-        config_file = data_dir + 'lmr_configs.yml'
-        if not os.path.exists(config_file):
-            config_file = data_dir + 'configs.yml'
-
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as file:
-                options = yaml.load(file, Loader=yaml.FullLoader)
-
-            options_list = []
-            for key1 in options.keys():
-                if isinstance(options[key1], dict):
-                    for key2 in options[key1].keys():
-                        if isinstance(options[key1][key2], dict) and 'value' in options[key1][key2]:
-                            option_txt = key1+'/'+key2+': '+str(options[key1][key2]['value'])
-                        else:
-                            option_txt = key1+'/'+key2+': '+str(options[key1][key2])
-                        options_list.append(option_txt)
-                else:
-                    options_list.append(f"{key1}: {options[key1]}")
-        else:
-            print(f"Warning: No config file found at {config_file}")
-            options_list = ['No configuration file found']
-
-    except Exception as e:
-        print(f"Error processing lmr data: {e}")
-        print("Data variables available:", list(data_xarray.data_vars))
-        raise
-
-    #
-    ### FORMAT DATA
-    #
-    # Ensure correct dimensions
-    if var_spatial_mean.ndim == 3:  # (time, lat, lon)
-        var_spatial_mean = np.expand_dims(var_spatial_mean, axis=0)  # Add method dimension
-
-    if var_spatial_members.ndim == 3:  # (ens, lat, lon) - no time
-        var_spatial_members = np.expand_dims(var_spatial_members, axis=1)  # Add time dimension
+    # Ensure var_spatial_mean has the right shape for the module-level expand_dims below.
+    # (time, lat, lon) is correct; ndim==3 branch adds the method dimension.
 if var_spatial_members.ndim == 4:  # (ens, time, lat, lon)
     var_spatial_members = np.expand_dims(var_spatial_members, axis=0)  # Add method dimension -> (method, ens, time, lat, lon)
 
