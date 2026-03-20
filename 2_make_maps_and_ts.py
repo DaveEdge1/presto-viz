@@ -191,38 +191,38 @@ elif (all(isinstance(x,np.integer) for x in ens_spatial)) or (all(isinstance(x,f
     print('Spatial bounds - Members are ensembles')
     print(f'Data shape: {var_spatial_members.shape}, Computing quantiles for {var_spatial_members.shape[1]} ensemble members')
     spatial_uncertainty_txt = '2.5 - 97.5th percentile range'; skip_spatial_ens = False
-    
+
     print('Computing percentiles using optimized method for large datasets...')
     starttime_quantile = timekeeping.time()
-    
+
     # Convert to numpy for much faster quantile computation
     print('Converting xarray to numpy for faster processing...')
     var_spatial_numpy = var_spatial_members.values  # Shape: (methods, ens_spatial, time, lat, lon)
     print(f'Data shape: {var_spatial_numpy.shape}')
-    
+
     # Compute both quantiles simultaneously using numpy (much faster than xarray)
     print('Computing 2.5th and 97.5th percentiles simultaneously...')
     quantiles = np.quantile(var_spatial_numpy, [0.025, 0.975], axis=1)  # Compute along ensemble dimension
-    
+
     # Convert back to xarray format with CORRECT coordinates (no ens_spatial dimension)
     print('Converting results back to xarray format...')
     # Get the correct coordinates by removing ens_spatial from var_spatial_members
     correct_coords = {k: v for k, v in var_spatial_members.coords.items() if k != 'ens_spatial'}
     correct_dims = [dim for dim in var_spatial_members.dims if dim != 'ens_spatial']
-    
+
     var_spatial_lowerbound = xr.DataArray(
-        quantiles[0], 
+        quantiles[0],
         dims=correct_dims,
         coords=correct_coords,
         attrs=var_spatial_members.attrs
     )
     var_spatial_upperbound = xr.DataArray(
-        quantiles[1], 
-        dims=correct_dims, 
+        quantiles[1],
+        dims=correct_dims,
         coords=correct_coords,
         attrs=var_spatial_members.attrs
     )
-    
+
     print(f'Both percentiles computed in {timekeeping.time() - starttime_quantile:.1f} seconds (much faster than xarray method!)')
     print('Quantile calculations completed successfully')
     #
@@ -292,7 +292,7 @@ elif globalens_allnumbers:
     print('Global bounds - Members are ensembles')
     print(f'Global data shape: {var_global_members_reshape.shape}, Computing global quantiles')
     global_uncertainty_txt = '2.5 - 97.5th percentile range'; skip_global_ens = False
-    
+
     print('Computing global percentiles simultaneously (optimized method)...')
     starttime_global = timekeeping.time()
     # Compute both quantiles at once for efficiency
@@ -335,6 +335,10 @@ print('var_global_upperbound:     ',var_global_upperbound.shape)
 # Compute the mean of all methods
 var_spatial_mean_allmethods = np.nanmean(var_spatial_mean,axis=0)
 
+# Create URL-safe slugs for each method (used as "version" in image filenames)
+def method_to_slug(m): return str(m).lower().replace(' ', '_')
+method_slugs = [method_to_slug(m) for m in method]
+
 
 #%% MAP PREPARATION
 
@@ -368,42 +372,6 @@ crs_mercator = ccrs.Mercator(central_longitude=0, min_latitude=-85, max_latitude
 import cartopy.feature as cfeature
 coastlines_feature = cfeature.NaturalEarthFeature('physical', 'coastline', '50m',
                                                    edgecolor='black', facecolor='none')
-
-# Pre-compute cyclic point coordinates for all timesteps to avoid repeated computation
-# This prevents memory accumulation from coordinate transformations
-if map_type == 'contourf':
-    print('Pre-computing cyclic coordinates for all timesteps...')
-    # Add cyclic point to longitude for proper wrapping
-    var_spatial_with_cyclic = []
-    lon_cyclic = None
-    for idx in range(len(time_var)):
-        try:
-            var_cyc, lon_cyc = cutil.add_cyclic_point(
-                var_spatial_mean_allmethods[idx,:,:], coord=lon)
-        except ValueError as e:
-            print(f'Warning: Could not add cyclic point: {e}. Using data as-is.')
-            var_cyc = var_spatial_mean_allmethods[idx,:,:]
-            lon_cyc = lon
-        var_spatial_with_cyclic.append(var_cyc)
-        if lon_cyclic is None:
-            lon_cyclic = lon_cyc  # Same for all timesteps
-    print('Cyclic coordinate pre-computation complete')
-
-# CRITICAL FIX: Pre-transform coordinates from PlateCarree to Mercator ONCE
-# Avoid transform parameter which causes memory leak through repeated coordinate transformation
-print('Pre-transforming coordinates to target projection to avoid memory leak...')
-import numpy as np
-# Create meshgrid of coordinates
-if map_type == 'contourf':
-    lon_2d, lat_2d = np.meshgrid(lon_cyclic, lat)
-else:
-    lon_2d, lat_2d = np.meshgrid(lon, lat)
-
-# Transform coordinates from PlateCarree to Mercator once
-transformed_coords = crs_mercator.transform_points(crs_platecarree, lon_2d, lat_2d)
-x_transformed = transformed_coords[:, :, 0]
-y_transformed = transformed_coords[:, :, 1]
-print('Coordinate transformation complete')
 
 # Pre-determine grid spacing based on map region (same for all iterations)
 if   map_region == 'global':    extra_txt_x = 0;       extra_txt_y = -82;   grid_x = 60; grid_y = 30
@@ -540,237 +508,249 @@ def make_one_plot(args):
     plt.close(fig2)
 
 
-# === MAIN LOOP USING MULTIPROCESSING POOL ===
-print("Step 1: Making maps and info panels with parallel workers (4 processes)")
-
-# Prepare all arguments for parallel processing
-all_args = []
-for i, time in enumerate(time_var):
-    if map_type == "contourf":
-        try:
-            var_cyclic, lon_cyclic = cutil.add_cyclic_point(
-                var_spatial_mean_allmethods[i,:,:], coord=lon)
-        except ValueError as e:
-            print(f'Warning: Could not add cyclic point: {e}. Using data as-is.')
-            var_cyclic = var_spatial_mean_allmethods[i,:,:]
-            lon_cyclic = lon
-    elif map_type == "pcolormesh":
-        var_cyclic = var_spatial_mean_allmethods[i,:,:]
-        lon_cyclic = lon  # not used
-    elif map_type == "regions_ipcc_ar6":
-        var_cyclic = var_spatial_mean_allmethods[i,:,:]
-        lon_cyclic = lon  # not used
-    else:
-        raise ValueError(f"Unknown map_type: {map_type}")
-
-    args_tuple = (i, time,
-                  var_cyclic, lon_cyclic,
-                  None if skip_global_ens else var_global_lowerbound,
-                  None if skip_global_ens else var_global_upperbound,
-                  var_global_mean_allmethods,
-                  lon_bounds_2d, lat_bounds_2d,
-                  output_dir_full, filename_txt,
-                  cmap, levels, tick_levels,
-                  colors_selected,
-                  crs_mercator, crs_platecarree,
-                  ref_period, colorbar_txt,
-                  info_unit_txt, time_var,
-                  time_start, time_end, dataset_name, version_txt,
-                  map_region, map_type,
-                  skip_global_ens,
-                  ar6_all, ar6_abbreviations, regions_all,
-                  colors_from_cmap,
-                  coastlines_feature, y_locator, x_locator,
-                  extra_txt_x, extra_txt_y, time_unit_txt)
-    all_args.append(args_tuple)
-
-# Force cartopy to download + cache Natural Earth shapefiles in the main process
-# BEFORE spawning workers — prevents race condition where all 4 workers try to
-# download simultaneously, corrupting the shapefile cache.
-import cartopy.io.shapereader as shpreader
-print("Pre-fetching Natural Earth coastline data to populate cache...")
-shpreader.natural_earth(resolution="50m", category="physical", name="coastline")
-print("Natural Earth data ready")
-
-print(f"Prepared {len(all_args)} tasks, starting parallel processing...")
-
-# Process in parallel with a pool of 4 workers
-# maxtasksperchild=20 ensures each worker is terminated after 20 task to prevent memory leaks
-from multiprocessing import Pool
-with Pool(processes=4, maxtasksperchild=20) as pool:
-    # Use imap to get progress feedback
-    for idx, result in enumerate(pool.imap(make_one_plot, all_args)):
-        if idx % 50 == 0:
-            print(f"Completed {idx+1}/{len(all_args)}")
-
-print("All maps and info panels complete")
-
-#%% MAKE TIME SERIES FOR LOCATIONS
-
-# Set color possibilities for time series
-method_color_list = ['black','royalblue','salmon','olive','orange','darkseagreen',
-                     'black','royalblue','salmon','olive','orange','darkseagreen',
-                     'black','royalblue','salmon','olive','orange','darkseagreen',
-                     'black','royalblue','salmon','olive','orange','darkseagreen',
-                     'black','royalblue','salmon','olive','orange','darkseagreen']
-
-lat_string, lon_string, j_for_ts, i_for_ts, lon_neg = functions_presto.select_latlons(lat, lon, map_region, dataset_txt)
-
-#%% TIME SERIES FUNCTION
-
-# A function to make a time series
-def make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color):
-    #
-    # Make an interactive time series with bokeh
-    p1 = figure(width=1200,
-                height=ts_height,
-                title=title_txt_bokeh+' for '+dataset_name+', v.'+version_txt.replace('_','.')+location_title_txt+' (uncertainties: '+spatial_uncertainty_txt+')',
-                tools='pan,box_zoom,hover,save,reset',
-                active_drag='box_zoom',active_inspect='hover',
-                x_range=Range1d(bounds=(min(time_var),max(time_var))))
-    #
-    p1.title.text_color = text_color
-    p1.xaxis.axis_label = time_name_txt+' ('+time_unit_txt+')'
-    p1.yaxis.axis_label = title_txt_bokeh
-    p1.x_range.start = time_start
-    p1.x_range.end   = time_end
-    p1.y_range.start = ts_yrange[0]
-    p1.y_range.end   = ts_yrange[1]
-    #
-    for k,method_chosen in enumerate(method):
-        if skip_spatial_ens: pass
-        else: p1.varea(time_var,var_lowerbound_to_plot[k,:],var_upperbound_to_plot[k,:],color=method_color_list[k],alpha=0.1,legend_label=method_chosen)
-        p1.line(time_var,var_mean_to_plot[k,:],color=method_color_list[k],line_width=1,legend_label=method_chosen)
-    line0 = Span(location=0,dimension='width',line_color='gray',line_width=1)
-    p1.renderers.extend([line0])
-    p1.background_fill_color           = 'white'
-    p1.grid.grid_line_color            = '#e0e0e0'
-    p1.axis.axis_label_text_font_style = 'normal'
-    p1.axis.axis_label_text_font_size  = '16px'
-    p1.title.text_font_size            = '16px'
-    p1.title.align                     = 'center'
-    p1.legend.location     = 'bottom_right'
-    p1.legend.click_policy = 'hide'
-    #
-    hover = p1.select_one(HoverTool)
-    hover.tooltips = [
-            (time_name_txt,'@x{int} '+time_unit_txt),
-            (var_txt,'@y '+html_unit_txt),
-            ]
-    hover.mode='vline'
-    #
-    # Save as html
-    html = file_html(p1,CDN,outputfile_txt)
-    output_file = open(output_dir_full+outputfile_txt,'w')
-    output_file.write(html)
-    output_file.close()
-
-
-#%% MAKE TIME SERIES FOR LOCATIONS
-
-# Set color possibilities for time series
-method_color_list = ['black','royalblue','salmon','olive','orange','darkseagreen',
-                     'black','royalblue','salmon','olive','orange','darkseagreen',
-                     'black','royalblue','salmon','olive','orange','darkseagreen',
-                     'black','royalblue','salmon','olive','orange','darkseagreen',
-                     'black','royalblue','salmon','olive','orange','darkseagreen']
-# Make a timeseries at every location
-if make_gridded_ts:
-    j,i = 0,0
-    counter = 0
-    n_total = len(j_for_ts)*len(i_for_ts)
-    print('Step 3: Making time series at selected points. N='+str(n_total))
-    for j in j_for_ts:
-        counter += 1
-        print('Processing: '+str(counter)+'/'+str(len(j_for_ts)))
-        for i in i_for_ts:
-            #
-            # Make an interactive time series with bokeh
-            lat_txt = str('{:.1f}'.format(lat[j]))
-            lon_txt = str('{:.1f}'.format(lon_neg[i]))
-            var_mean_to_plot       = var_spatial_mean[:,:,j,i].values
-            var_lowerbound_to_plot = var_spatial_lowerbound[:,:,j,i].values
-            var_upperbound_to_plot = var_spatial_upperbound[:,:,j,i].values
-            location_title_txt     = ' near '+lat_txt+'\u00B0N, '+lon_txt+'\u00B0E'
-            outputfile_txt         = 'ts_'+filename_txt+'_lat_'+lat_txt+'_lon_'+lon_txt+'.html'
-            text_color             = 'black'
-            make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color)
-
-
-#%% MAKE TIME SERIES FOR REGIONS
-
-# Make regional time series plots, if requested
-if make_regional_ts:
-    #
-    ### Compute or retrieve regional means
-    if map_type == 'regions_ipcc_ar6':
-        #
-        # In this case, regional means have already been created
-        n_regions = len(ar6_abbreviations)
-        var_regional_mean       = np.zeros((n_methods,n_time,n_regions)); var_regional_mean[:]       = np.nan
-        var_regional_lowerbound = np.zeros((n_methods,n_time,n_regions)); var_regional_lowerbound[:] = np.nan
-        var_regional_upperbound = np.zeros((n_methods,n_time,n_regions)); var_regional_upperbound[:] = np.nan
-        for i,region_txt in enumerate(ar6_abbreviations):
-            ind_region = np.where(region_txt==regions_all)[0][0]
-            var_regional_mean[:,:,i]       = var_spatial_mean[:,:,ind_region,0]
-            var_regional_lowerbound[:,:,i] = var_spatial_lowerbound[:,:,ind_region,0]
-            var_regional_upperbound[:,:,i] = var_spatial_upperbound[:,:,ind_region,0]
-        #
-    else:
-        #
-        # Make a mask for the different regions
-        try:
-            mask_3D = ar6_all.mask_3D(lon, lat)
-        except ValueError as e:
-            if "equal longitude coordinates" in str(e):
-                print(f'Warning: Longitude coordinates appear to wrap. Removing last point.')
-                # Update lon array directly so all subsequent code uses adjusted coordinates
-                lon = lon[:-1]
-                # Slice all three spatial data arrays to match
-                var_spatial_mean = var_spatial_mean[:,:,:,:-1]
-                var_spatial_lowerbound = var_spatial_lowerbound[:,:,:,:-1]
-                var_spatial_upperbound = var_spatial_upperbound[:,:,:,:-1]
-                # Now create mask with updated coordinates
-                mask_3D = ar6_all.mask_3D(lon, lat)
-            else:
-                raise
-        #
-        # Calculate weights for every gridcell
-        lon_2d,lat_2d = np.meshgrid(lon,lat)
-        lat_weights = np.cos(np.deg2rad(lat_2d))
-        #
-        # Compute regional means
-        var_regional_mean       = var_spatial_mean.weighted(mask_3D * lat_weights).mean(dim=('lat','lon')).values
-        var_regional_lowerbound = var_spatial_lowerbound.weighted(mask_3D * lat_weights).mean(dim=('lat','lon')).values
-        var_regional_upperbound = var_spatial_upperbound.weighted(mask_3D * lat_weights).mean(dim=('lat','lon')).values
-    #
-    #
-    ### Make interactive regional time series plots with bokeh
-    print('Step 4: Making time series for regions. N='+str(len(ar6_all.abbrevs)))
-    nans_to_plot = np.zeros((n_methods,n_time)); nans_to_plot[:] = np.nan
-    for j,abbrev_selected in enumerate(ar6_all.abbrevs):
-        print('Processing: '+str(j+1)+'/'+str(len(ar6_all.abbrevs))+': '+abbrev_selected)
-        #
-        # Set some parameters
-        location_title_txt = ' for region '+ar6_all.abbrevs[j]+' ('+ar6_all.names[j]+')'
-        outputfile_txt     = 'ts_'+filename_txt+'_region_'+ar6_all.abbrevs[j]+'.html'
-        text_color         = 'green'
-        #
-        # Find the index of the region
-        ind_selected = np.where(mask_3D.abbrevs.values == abbrev_selected)[0]
-        if len(ind_selected) == 1:
-            var_mean_to_plot       = var_regional_mean[:,:,ind_selected[0]]
-            var_lowerbound_to_plot = var_regional_lowerbound[:,:,ind_selected[0]]
-            var_upperbound_to_plot = var_regional_upperbound[:,:,ind_selected[0]]
+# ── PER-METHOD MAP + TIME-SERIES GENERATION ───────────────────────────────────
+# For n_methods==1 this runs once with the original filename_txt / version_txt.
+# For n_methods>1  each seed run gets its own set of image files (keyed by its
+# slug) so the visualizer version-selector dropdown can switch between them.
+for _i_m in range(n_methods):
+    if n_methods > 1:
+        # Override module-level names; all downstream code uses these variables.
+        version_txt                 = method_slugs[_i_m]
+        filename_txt                = (dataset_txt + '_v' + version_txt + '_'
+                                       + var_txt + '_' + quantity_txt.lower())
+        var_spatial_mean_allmethods = var_spatial_mean[_i_m, :, :, :].values   # (time,lat,lon)
+        var_global_mean_allmethods  = var_global_mean[_i_m, :]                  # (time,)
+        if globalens_allnumbers and not skip_global_ens:
+            _gq = np.quantile(var_global_members[_i_m, :, :], [0.025, 0.975], axis=0)
+            var_global_lowerbound = _gq[0]
+            var_global_upperbound = _gq[1]
         else:
-            var_mean_to_plot       = nans_to_plot
-            var_lowerbound_to_plot = nans_to_plot
-            var_upperbound_to_plot = nans_to_plot
+            var_global_lowerbound = var_global_mean_allmethods
+            var_global_upperbound = var_global_mean_allmethods
+    print(f'\n=== Generating images for method {_i_m+1}/{n_methods}: {filename_txt} ===')
+
+    # === MAIN LOOP USING MULTIPROCESSING POOL ===
+    print("Step 1: Making maps and info panels with parallel workers (4 processes)")
+
+    # Prepare all arguments for parallel processing
+    all_args = []
+    for i, time in enumerate(time_var):
+        if map_type == "contourf":
+            try:
+                var_cyclic, lon_cyclic = cutil.add_cyclic_point(
+                    var_spatial_mean_allmethods[i,:,:], coord=lon)
+            except ValueError as e:
+                print(f'Warning: Could not add cyclic point: {e}. Using data as-is.')
+                var_cyclic = var_spatial_mean_allmethods[i,:,:]
+                lon_cyclic = lon
+        elif map_type == "pcolormesh":
+            var_cyclic = var_spatial_mean_allmethods[i,:,:]
+            lon_cyclic = lon  # not used
+        elif map_type == "regions_ipcc_ar6":
+            var_cyclic = var_spatial_mean_allmethods[i,:,:]
+            lon_cyclic = lon  # not used
+        else:
+            raise ValueError(f"Unknown map_type: {map_type}")
+
+        args_tuple = (i, time,
+                      var_cyclic, lon_cyclic,
+                      None if skip_global_ens else var_global_lowerbound,
+                      None if skip_global_ens else var_global_upperbound,
+                      var_global_mean_allmethods,
+                      lon_bounds_2d, lat_bounds_2d,
+                      output_dir_full, filename_txt,
+                      cmap, levels, tick_levels,
+                      colors_selected,
+                      crs_mercator, crs_platecarree,
+                      ref_period, colorbar_txt,
+                      info_unit_txt, time_var,
+                      time_start, time_end, dataset_name, version_txt,
+                      map_region, map_type,
+                      skip_global_ens,
+                      ar6_all, ar6_abbreviations, regions_all,
+                      colors_from_cmap,
+                      coastlines_feature, y_locator, x_locator,
+                      extra_txt_x, extra_txt_y, time_unit_txt)
+        all_args.append(args_tuple)
+
+    # Force cartopy to download + cache Natural Earth shapefiles in the main process
+    # BEFORE spawning workers — prevents race condition where all 4 workers try to
+    # download simultaneously, corrupting the shapefile cache.
+    import cartopy.io.shapereader as shpreader
+    print("Pre-fetching Natural Earth coastline data to populate cache...")
+    shpreader.natural_earth(resolution="50m", category="physical", name="coastline")
+    print("Natural Earth data ready")
+
+    print(f"Prepared {len(all_args)} tasks, starting parallel processing...")
+
+    # Process in parallel with a pool of 4 workers
+    # maxtasksperchild=20 ensures each worker is terminated after 20 task to prevent memory leaks
+    from multiprocessing import Pool
+    with Pool(processes=4, maxtasksperchild=20) as pool:
+        # Use imap to get progress feedback
+        for idx, result in enumerate(pool.imap(make_one_plot, all_args)):
+            if idx % 50 == 0:
+                print(f"Completed {idx+1}/{len(all_args)}")
+
+    print("All maps and info panels complete")
+
+    #%% TIME SERIES FUNCTION
+
+    # Set color possibilities for time series
+    method_color_list = ['black','royalblue','salmon','olive','orange','darkseagreen',
+                         'black','royalblue','salmon','olive','orange','darkseagreen',
+                         'black','royalblue','salmon','olive','orange','darkseagreen',
+                         'black','royalblue','salmon','olive','orange','darkseagreen',
+                         'black','royalblue','salmon','olive','orange','darkseagreen']
+
+    lat_string, lon_string, j_for_ts, i_for_ts, lon_neg = functions_presto.select_latlons(lat, lon, map_region, dataset_txt)
+
+    # A function to make a time series
+    def make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color):
         #
-        make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color)
+        # Make an interactive time series with bokeh
+        p1 = figure(width=1200,
+                    height=ts_height,
+                    title=title_txt_bokeh+' for '+dataset_name+', v.'+version_txt.replace('_','.')+location_title_txt+' (uncertainties: '+spatial_uncertainty_txt+')',
+                    tools='pan,box_zoom,hover,save,reset',
+                    active_drag='box_zoom',active_inspect='hover',
+                    x_range=Range1d(bounds=(min(time_var),max(time_var))))
+        #
+        p1.title.text_color = text_color
+        p1.xaxis.axis_label = time_name_txt+' ('+time_unit_txt+')'
+        p1.yaxis.axis_label = title_txt_bokeh
+        p1.x_range.start = time_start
+        p1.x_range.end   = time_end
+        p1.y_range.start = ts_yrange[0]
+        p1.y_range.end   = ts_yrange[1]
+        #
+        for k,method_chosen in enumerate(method):
+            if skip_spatial_ens: pass
+            else: p1.varea(time_var,var_lowerbound_to_plot[k,:],var_upperbound_to_plot[k,:],color=method_color_list[k],alpha=0.1,legend_label=method_chosen)
+            p1.line(time_var,var_mean_to_plot[k,:],color=method_color_list[k],line_width=1,legend_label=method_chosen)
+        line0 = Span(location=0,dimension='width',line_color='gray',line_width=1)
+        p1.renderers.extend([line0])
+        p1.background_fill_color           = 'white'
+        p1.grid.grid_line_color            = '#e0e0e0'
+        p1.axis.axis_label_text_font_style = 'normal'
+        p1.axis.axis_label_text_font_size  = '16px'
+        p1.title.text_font_size            = '16px'
+        p1.title.align                     = 'center'
+        p1.legend.location     = 'bottom_right'
+        p1.legend.click_policy = 'hide'
+        #
+        hover = p1.select_one(HoverTool)
+        hover.tooltips = [
+                (time_name_txt,'@x{int} '+time_unit_txt),
+                (var_txt,'@y '+html_unit_txt),
+                ]
+        hover.mode='vline'
+        #
+        # Save as html
+        html = file_html(p1,CDN,outputfile_txt)
+        output_file = open(output_dir_full+outputfile_txt,'w')
+        output_file.write(html)
+        output_file.close()
+
+
+    #%% MAKE TIME SERIES FOR LOCATIONS
+
+    # Make a timeseries at every location
+    if make_gridded_ts:
+        j,i = 0,0
+        counter = 0
+        n_total = len(j_for_ts)*len(i_for_ts)
+        print('Step 3: Making time series at selected points. N='+str(n_total))
+        for j in j_for_ts:
+            counter += 1
+            print('Processing: '+str(counter)+'/'+str(len(j_for_ts)))
+            for i in i_for_ts:
+                #
+                # Make an interactive time series with bokeh
+                lat_txt = str('{:.1f}'.format(lat[j]))
+                lon_txt = str('{:.1f}'.format(lon_neg[i]))
+                var_mean_to_plot       = var_spatial_mean[:,:,j,i].values
+                var_lowerbound_to_plot = var_spatial_lowerbound[:,:,j,i].values
+                var_upperbound_to_plot = var_spatial_upperbound[:,:,j,i].values
+                location_title_txt     = ' near '+lat_txt+'\u00B0N, '+lon_txt+'\u00B0E'
+                outputfile_txt         = 'ts_'+filename_txt+'_lat_'+lat_txt+'_lon_'+lon_txt+'.html'
+                text_color             = 'black'
+                make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color)
+
+
+    #%% MAKE TIME SERIES FOR REGIONS
+
+    # Make regional time series plots, if requested
+    if make_regional_ts:
+        #
+        ### Compute or retrieve regional means
+        if map_type == 'regions_ipcc_ar6':
+            #
+            # In this case, regional means have already been created
+            n_regions = len(ar6_abbreviations)
+            var_regional_mean       = np.zeros((n_methods,n_time,n_regions)); var_regional_mean[:]       = np.nan
+            var_regional_lowerbound = np.zeros((n_methods,n_time,n_regions)); var_regional_lowerbound[:] = np.nan
+            var_regional_upperbound = np.zeros((n_methods,n_time,n_regions)); var_regional_upperbound[:] = np.nan
+            for i,region_txt in enumerate(ar6_abbreviations):
+                ind_region = np.where(region_txt==regions_all)[0][0]
+                var_regional_mean[:,:,i]       = var_spatial_mean[:,:,ind_region,0]
+                var_regional_lowerbound[:,:,i] = var_spatial_lowerbound[:,:,ind_region,0]
+                var_regional_upperbound[:,:,i] = var_spatial_upperbound[:,:,ind_region,0]
+            #
+        else:
+            #
+            # Make a mask for the different regions
+            try:
+                mask_3D = ar6_all.mask_3D(lon, lat)
+            except ValueError as e:
+                if "equal longitude coordinates" in str(e):
+                    print(f'Warning: Longitude coordinates appear to wrap. Removing last point.')
+                    # Update lon array directly so all subsequent code uses adjusted coordinates
+                    lon = lon[:-1]
+                    # Slice all three spatial data arrays to match
+                    var_spatial_mean = var_spatial_mean[:,:,:,:-1]
+                    var_spatial_lowerbound = var_spatial_lowerbound[:,:,:,:-1]
+                    var_spatial_upperbound = var_spatial_upperbound[:,:,:,:-1]
+                    # Now create mask with updated coordinates
+                    mask_3D = ar6_all.mask_3D(lon, lat)
+                else:
+                    raise
+            #
+            # Calculate weights for every gridcell
+            lon_2d,lat_2d = np.meshgrid(lon,lat)
+            lat_weights = np.cos(np.deg2rad(lat_2d))
+            #
+            # Compute regional means
+            var_regional_mean       = var_spatial_mean.weighted(mask_3D * lat_weights).mean(dim=('lat','lon')).values
+            var_regional_lowerbound = var_spatial_lowerbound.weighted(mask_3D * lat_weights).mean(dim=('lat','lon')).values
+            var_regional_upperbound = var_spatial_upperbound.weighted(mask_3D * lat_weights).mean(dim=('lat','lon')).values
+        #
+        #
+        ### Make interactive regional time series plots with bokeh
+        print('Step 4: Making time series for regions. N='+str(len(ar6_all.abbrevs)))
+        nans_to_plot = np.zeros((n_methods,n_time)); nans_to_plot[:] = np.nan
+        for j,abbrev_selected in enumerate(ar6_all.abbrevs):
+            print('Processing: '+str(j+1)+'/'+str(len(ar6_all.abbrevs))+': '+abbrev_selected)
+            #
+            # Set some parameters
+            location_title_txt = ' for region '+ar6_all.abbrevs[j]+' ('+ar6_all.names[j]+')'
+            outputfile_txt     = 'ts_'+filename_txt+'_region_'+ar6_all.abbrevs[j]+'.html'
+            text_color         = 'green'
+            #
+            # Find the index of the region
+            ind_selected = np.where(mask_3D.abbrevs.values == abbrev_selected)[0]
+            if len(ind_selected) == 1:
+                var_mean_to_plot       = var_regional_mean[:,:,ind_selected[0]]
+                var_lowerbound_to_plot = var_regional_lowerbound[:,:,ind_selected[0]]
+                var_upperbound_to_plot = var_regional_upperbound[:,:,ind_selected[0]]
+            else:
+                var_mean_to_plot       = nans_to_plot
+                var_lowerbound_to_plot = nans_to_plot
+                var_upperbound_to_plot = nans_to_plot
+            #
+            make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color)
 
 endtime_total = timekeeping.time()  # End timer
 
 print(' ===== FINISHED script 2: Making maps and time series saved to: '+output_dir_full+' =====')
 print('Total time: '+str('%1.2f' % ((endtime_total-starttime_total)/60))+' minutes')
-

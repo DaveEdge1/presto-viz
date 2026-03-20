@@ -119,10 +119,17 @@ for line in lines_template:
             lines_output.append(setting_line_txt)
     elif line == '[INSERT VARIABLES]\n':
         lines_output.append("      // Set initial variables\n")
+        # Generate per-method slugs for the dropdown (matches Script 2 image filenames)
+        def _mslug(m): return str(m).lower().replace(' ', '_')
+        if dataset_txt == 'lmr' and len(method) > 1:
+            method_slugs_s3 = [_mslug(m) for m in method]
+        else:
+            method_slugs_s3 = [version_txt]
+        versions_js = "','".join(method_slugs_s3)
         lines_output.append("      var dataset              = '"+dataset_txt+"';\n")
-        lines_output.append("      var dataset_name         = '"+method[0]+"';\n")
+        lines_output.append("      var dataset_name         = '"+dataset_name+"';\n")
         lines_output.append("      var dataset_details      = 'Reference period: "+txt_ref_period+"';\n")
-        lines_output.append("      var versions_available   = ['"+version_txt+"'];\n")
+        lines_output.append("      var versions_available   = ['"+versions_js+"'];\n")
         lines_output.append("      var variables_available  = ['"+var_txt+"'];\n")
         lines_output.append("      var quantities_available = ['"+quantity_txt.lower()+"'];\n")
         lines_output.append("      var time_min             = "+txt_time_old+";\n")
