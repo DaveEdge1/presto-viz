@@ -58,79 +58,71 @@ print(f' ===== STARTING script 1: Reformatting data for {filename_txt} =====')
 
 if dataset_txt == 'lmr':
     #
-    ### LOAD CFR/LMR2 DATA  (combined across all seed runs)
+    ### LOAD CFR/LMR2 DATA (individual seed runs presented as separate methods)
     #
     print('=== Processing CFR/LMR2 Reconstruction ===')
 
-    combined_path = os.path.join(data_dir, 'combined_recon.nc')
-    if not os.path.exists(combined_path):
+    # Load up to 3 individual seed files: job_r01_recon.nc, job_r02_recon.nc, ...
+    seed_files = sorted(glob.glob(os.path.join(data_dir, 'job_r*_recon.nc')))[:3]
+    if not seed_files:
         raise FileNotFoundError(
-            f'combined_recon.nc not found in {data_dir}. '
-            'Re-run the reconstruction to regenerate it with the latest cfr_main_code.py.')
+            f'No job_r*_recon.nc files found in {data_dir}. '
+            'Re-run the reconstruction to regenerate them.')
 
-    data = xr.open_dataset(combined_path)
-    print(f'Loaded combined_recon.nc: {dict(data.dims)}')
-    print(f'  tas shape:    {dict(data["tas"].sizes)}')
-    print(f'  tas_gm shape: {dict(data["tas_gm"].sizes)}')
+    print(f'Found {len(seed_files)} seed file(s): {[os.path.basename(f) for f in seed_files]}')
+    methods = [f'Run {i+1}' for i in range(len(seed_files))]
 
-    # Spatial: combined file has tas (time, ens/seeds, lat, lon) from ReconRes.
-    # Reorder to (ens, time, lat, lon) for the ens-first convention expected below.
-    tas = data['tas'].values                         # (time, n_seeds, lat, lon)
-    var_spatial_members = np.moveaxis(tas, 1, 0)    # (n_seeds, time, lat, lon)
-    var_spatial_mean    = np.mean(var_spatial_members, axis=0)  # (time, lat, lon)
+    spatial_list = []
+    global_list  = []
 
-    # Global mean: combined file has tas_gm (time, total_ens) from ReconRes.
-    # Transpose to (total_ens, time) for the ens-first convention expected below.
-    var_global_members = data['tas_gm'].values.T    # (total_ens, time)
+    for i, sf in enumerate(seed_files):
+        ds = xr.open_dataset(sf)
+        print(f'  {methods[i]} ({os.path.basename(sf)}): '
+              f'tas={dict(ds["tas"].sizes)}, tas_gm={dict(ds["tas_gm"].sizes)}')
 
-    # Coordinates
-    lat = data['lat'].values
-    lon = data['lon'].values
+        # tas: (time, lat, lon) — ensemble-mean spatial field for this seed
+        spatial_list.append(ds['tas'].values[np.newaxis, :, :, :])  # (1, time, lat, lon)
 
-    # Time: CFR stores integer CE years; convert to yr BP (age = 1950 - year_CE)
-    time_coord = data['time'].values
-    age = 1950 - np.array(time_coord, dtype=float)  # e.g. 850-1850 CE -> 1100-100 yr BP
+        # tas_gm: (time, ens) → (ens, time)
+        global_list.append(ds['tas_gm'].values.T)  # (ens, time)
 
-    data.close()
+        if i == 0:
+            lat        = ds['lat'].values
+            lon        = ds['lon'].values
+            time_coord = ds['time'].values
+            age        = 1950 - np.array(time_coord, dtype=float)
 
-    # Config options (lmr_configs.yml is included in the artifact when present)
+        ds.close()
+
+    # Stack across methods → (n_methods, ens, time, ...)
+    var_spatial_members = np.stack(spatial_list, axis=0)  # (n_methods, 1, time, lat, lon)
+    var_global_members  = np.stack(global_list,  axis=0)  # (n_methods, ens, time)
+
+    var_spatial_mean = np.mean(var_spatial_members, axis=1)  # (n_methods, time, lat, lon)
+    var_global_mean  = np.mean(var_global_members,  axis=1)  # (n_methods, time)
+
+    lat_bounds, lon_bounds = functions_presto.bounding_latlon(lat, lon)
+
+    ens_spatial = np.arange(var_spatial_members.shape[1]) + 1
+    ens_global  = np.arange(var_global_members.shape[1])  + 1
+    notes       = ['Processed from CFR/LMR2 output']
+
+    # Config options
     config_file = os.path.join(data_dir, 'lmr_configs.yml')
     if os.path.exists(config_file):
         with open(config_file, 'r') as f:
             options = yaml.load(f, Loader=yaml.FullLoader)
         options_list = [f'{k}: {v}' for k, v in options.items()]
     else:
-        print(f'Note: no lmr_configs.yml in artifact; config options will be blank.')
+        print('Note: no lmr_configs.yml in artifact; config options will be blank.')
         options_list = ['No configuration file found']
 
-    # Ensure var_spatial_mean has the right shape for the module-level expand_dims below.
-    # (time, lat, lon) is correct; ndim==3 branch adds the method dimension.
-if var_spatial_members.ndim == 4:  # (ens, time, lat, lon)
-    var_spatial_members = np.expand_dims(var_spatial_members, axis=0)  # Add method dimension -> (method, ens, time, lat, lon)
-    var_spatial_mean = np.mean(var_spatial_members, axis=1)            # (method, time, lat, lon)
+    print('Variable shapes:')
+    print(f'  var_spatial_members: {var_spatial_members.shape}')
+    print(f'  var_spatial_mean:    {var_spatial_mean.shape}')
+    print(f'  var_global_members:  {var_global_members.shape}')
+    print(f'  var_global_mean:     {var_global_mean.shape}')
 
-if var_global_members.ndim == 2:  # (ens, time)
-    var_global_members = np.expand_dims(var_global_members, axis=0)  # Add method dimension -> (method, ens, time)
-
-    var_global_mean = np.mean(var_global_members, axis=1)
-
-    # Calculate lat and lon bounds
-    lat_bounds, lon_bounds = functions_presto.bounding_latlon(lat, lon)
-
-    # Get other metadata
-    methods = ['CFR/LMR2']
-    ens_spatial = np.arange(var_spatial_members.shape[1]) + 1
-    ens_global = np.arange(var_global_members.shape[1]) + 1
-    notes = ['Processed from CFR/LMR2 output']
-
-    # Check shapes
-    print("Variable shapes:")
-    print(f"  var_spatial_members: {var_spatial_members.shape}")
-    print(f"  var_spatial_mean: {var_spatial_mean.shape}")
-    print(f"  var_global_members: {var_global_members.shape}")
-    print(f"  var_global_mean: {var_global_mean.shape}")
-
-    # Create output dataset
     data_xarray_output = xr.Dataset(
         {
             'tas_global_mean':    (['method','age'],                          var_global_mean,    {'units':'degrees Celsius'}),
@@ -156,7 +148,6 @@ if var_global_members.ndim == 2:  # (ens, time)
         },
     )
 
-    ### SAVE DATA
     output_file = os.path.join(data_dir, filename_txt + '.nc')
     data_xarray_output.to_netcdf(output_file)
     print(f' ===== FINISHED script 1: Data reformatted and saved to: {output_file} =====')
