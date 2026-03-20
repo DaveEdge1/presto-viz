@@ -107,6 +107,7 @@ if dataset_txt == 'lmr':
     # (time, lat, lon) is correct; ndim==3 branch adds the method dimension.
 if var_spatial_members.ndim == 4:  # (ens, time, lat, lon)
     var_spatial_members = np.expand_dims(var_spatial_members, axis=0)  # Add method dimension -> (method, ens, time, lat, lon)
+    var_spatial_mean = np.mean(var_spatial_members, axis=1)            # (method, time, lat, lon)
 
 if var_global_members.ndim == 2:  # (ens, time)
     var_global_members = np.expand_dims(var_global_members, axis=0)  # Add method dimension -> (method, ens, time)
