@@ -59,6 +59,7 @@ var_txt      = 'tas'
 quantity_txt = 'Annual'
 if   'holocene_da' in data_dir: dataset_txt = 'daholocene'; version_txt = data_dir.split('_holocene_da')[0].split('/')[-1]
 elif 'graph_em'    in data_dir: dataset_txt = 'graphem';    version_txt = data_dir.split('_graph_em')[0].split('/')[-1]
+elif any(f.startswith('temp12k_v') and f.endswith('.nc') for f in os.listdir(data_dir)): dataset_txt = 'temp12k'; version_txt = data_dir.rstrip('/').split('/')[-1]
 else:                           dataset_txt = 'lmr';        version_txt = data_dir.rstrip('/').split('/')[-1]
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
 
@@ -86,6 +87,7 @@ year = 1950-age
 
 # Set parameters based on the dataset
 if   dataset_txt == 'daholocene': time_units = 'yr BP'
+elif dataset_txt == 'temp12k':    time_units = 'yr BP'
 elif dataset_txt == 'graphem':    time_units = 'CE'
 elif dataset_txt == 'lmr':        time_units = 'CE'
 

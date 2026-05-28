@@ -13,6 +13,19 @@ import yaml
 import glob
 import os
 
+
+def _is_temp12k_nc(f):
+    """Temperature 12k composite NetCDFs carry tas + tas_gm and a temp12k title/source."""
+    try:
+        with xr.open_dataset(f) as dd:
+            if 'tas_gm' not in dd.variables:
+                return False
+            txt = (str(dd.attrs.get('title', '')) + ' ' + str(dd.attrs.get('source', ''))).lower()
+            return 'temp12k' in txt or 'temperature 12k' in txt
+    except Exception:
+        return False
+
+
 # Set directories
 data_dir = sys.argv[1]
 
@@ -43,6 +56,10 @@ elif any('test-run' in f for f in nc_files) or os.path.exists(data_dir + 'test-r
     dataset_txt = 'graphem'
     version_txt = data_dir.rstrip('/').split('/')[-1]
     print(f"Detected: GraphEM reconstruction (via test-run)")
+elif any(_is_temp12k_nc(f) for f in nc_files):
+    dataset_txt = 'temp12k'
+    version_txt = data_dir.rstrip('/').split('/')[-1]
+    print(f"Detected: Temperature 12k zonal composite")
 else:
     # Assume CFR/LMR2 format - treat as GraphEM-like
     dataset_txt = 'lmr'
@@ -287,6 +304,80 @@ elif dataset_txt == 'graphem':
         attrs={
             'dataset_name':      'GraphEM',
             'dataset_source_url':'https://paleopresto.com/custom.html',
+        },
+    )
+
+    data_xarray_output.to_netcdf(data_dir+filename_txt+'.nc')
+    print(' ===== FINISHED script 1: Data reformatted and saved to: '+data_dir+filename_txt+'.nc =====')
+
+elif dataset_txt == 'temp12k':
+    # Temperature 12k zonal composite: a single NetCDF with tas (time,lat,lon)
+    # latitudinal-stripe field + tas_gm (time,ens) global-mean ensemble. Same
+    # tas/tas_gm contract as GraphEM, so the handling mirrors that branch.
+    print('=== Processing Temperature 12k zonal composite ===')
+    data_filename = next(f for f in nc_files if _is_temp12k_nc(f))
+    data_xarray = xr.open_dataset(data_filename)
+
+    year        = data_xarray['time'].values
+    lat         = data_xarray['lat'].values
+    lon         = data_xarray['lon'].values
+    ens_global  = data_xarray['ens'].values
+    age = 1950 - np.array(year, dtype=float)
+
+    methods   = ['Temperature 12k Composite']
+    n_methods = len(methods)
+    n_ages    = len(age)
+    n_lat     = len(lat)
+    n_lon     = len(lon)
+    n_ens_g   = len(ens_global)
+
+    # spatial: the zonal-stripe field is a single (median) member
+    var_spatial_members = np.full((n_methods, 1, n_ages, n_lat, n_lon), np.nan)
+    var_spatial_members[0, 0, :, :, :] = data_xarray['tas'].values
+
+    # global: full multi-method ensemble (time, ens) -> (ens, age)
+    var_global_members = np.full((n_methods, n_ens_g, n_ages), np.nan)
+    var_global_members[0, :, :] = np.swapaxes(data_xarray['tas_gm'].values, 0, 1)
+
+    options_list = []
+    cfg_path = os.path.join(data_dir, 'configs.yml')
+    if os.path.exists(cfg_path):
+        with open(cfg_path, 'r') as file:
+            options = yaml.load(file, Loader=yaml.FullLoader) or {}
+        for key1 in options.keys():
+            for key2 in options[key1].keys():
+                options_list.append(key1 + '/' + key2 + ': ' + str(options[key1][key2]['value']))
+    if not options_list:
+        options_list = ['Temperature 12k multi-method composite (SCC/DCC/GAM/CPS/PaiCo)']
+
+    lat_bounds, lon_bounds = functions_presto.bounding_latlon(lat, lon)
+    var_spatial_mean = np.mean(var_spatial_members, axis=1)
+    var_global_mean  = np.mean(var_global_members, axis=1)
+    ens_spatial = np.arange(var_spatial_members.shape[1]) + 1
+    notes = ['Zonal 30-degree band reconstruction shown as latitudinal stripes']
+
+    data_xarray_output = xr.Dataset(
+        {
+            'tas_global_mean':    (['method','age'],                          var_global_mean,    {'units':'degrees Celsius'}),
+            'tas_global_members': (['method','ens_global','age'],             var_global_members, {'units':'degrees Celsius'}),
+            'tas_spatial_mean':   (['method','age','lat','lon'],              var_spatial_mean,   {'units':'degrees Celsius'}),
+            'tas_spatial_members':(['method','ens_spatial','age','lat','lon'],var_spatial_members,{'units':'degrees Celsius'})
+        },
+        coords={
+            'method':     (['method'],methods),
+            'notes':      (['notes'],notes),
+            'options':    (['options'],options_list),
+            'ens_global': (['ens_global'],ens_global,{'description':'multi-method ensemble members'}),
+            'ens_spatial':(['ens_spatial'],ens_spatial,{'description':'zonal-stripe field (median)'}),
+            'age':        (['age'],age,{'units':'yr BP'}),
+            'lat':        (['lat'],lat,{'units':'degrees_north'}),
+            'lon':        (['lon'],lon,{'units':'degrees_east'}),
+            'lat_bounds': (['lat_bounds'],lat_bounds,{'units':'degrees_north'}),
+            'lon_bounds': (['lon_bounds'],lon_bounds,{'units':'degrees_east'}),
+        },
+        attrs={
+            'dataset_name':      'Temperature 12k Composite',
+            'dataset_source_url':'https://github.com/DaveEdge1/presto-Temp12k_Composites',
         },
     )
 
