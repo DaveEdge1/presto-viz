@@ -59,6 +59,7 @@ var_txt      = 'tas'
 quantity_txt = 'Annual'
 if   'holocene_da' in data_dir: dataset_txt = 'daholocene'; version_txt = data_dir.split('_holocene_da')[0].split('/')[-1]
 elif 'graph_em'    in data_dir: dataset_txt = 'graphem';    version_txt = data_dir.split('_graph_em')[0].split('/')[-1]
+elif any(f.startswith('temp12k_v') and f.endswith('.nc') for f in os.listdir(data_dir)): dataset_txt = 'temp12k'; version_txt = data_dir.rstrip('/').split('/')[-1]
 else:                           dataset_txt = 'lmr';        version_txt = data_dir.rstrip('/').split('/')[-1]
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
 
@@ -147,6 +148,7 @@ if   dataset_txt == 'daholocene':    ref_period = '0-1 ka';       map_region = '
 elif dataset_txt == 'holocenehydro': ref_period = '0-1 ka';       map_region = 'global';    map_type = 'regions_ipcc_ar6'; make_gridded_ts = False; make_regional_ts = True
 elif dataset_txt == 'lgmr':          ref_period = '0-1 ka';       map_region = 'global';    map_type = 'contourf';         make_gridded_ts = True;  make_regional_ts = True
 elif dataset_txt == 'kaufman2020':   ref_period = '0-1 ka';       map_region = 'global';    map_type = 'pcolormesh';       make_gridded_ts = True;  make_regional_ts = False
+elif dataset_txt == 'temp12k':       ref_period = '0-1 ka';       map_region = 'global';    map_type = 'pcolormesh';       make_gridded_ts = True;  make_regional_ts = False
 elif dataset_txt == 'lmr':           ref_period = '0-1 ka';       map_region = 'global';    map_type = 'contourf';         make_gridded_ts = True;  make_regional_ts = True
 elif dataset_txt == 'phyda':         ref_period = '0-1 ka';       map_region = 'global';    map_type = 'contourf';         make_gridded_ts = True;  make_regional_ts = True
 elif dataset_txt == 'neukom2019':    ref_period = '0-1 ka';       map_region = 'global';    map_type = 'contourf';         make_gridded_ts = True;  make_regional_ts = True
@@ -161,6 +163,7 @@ else: print(' === ERROR: Unknown dataset:',dataset_txt)
 if dataset_txt in ['nada','owda']: ts_yrange = [-10,10]
 if dataset_txt == 'lgmr':          ts_yrange = [-30,5]
 if dataset_txt == 'kaufman2020':   levels = np.arange(-2,2.1,.2)
+if dataset_txt == 'temp12k':       levels = np.arange(-2,2.1,.2)
 
 
 #%% PROCESS SPATIAL DATA
