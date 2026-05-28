@@ -63,7 +63,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: DaveEdge1/presto-viz  # Update this to your public viz repository
-          ref: add-temp12k                  # TEMP: validate temp12k branch pre-merge
           path: presto-viz
 
       - name: Download input artifact
