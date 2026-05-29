@@ -238,7 +238,16 @@ elif dataset_txt == 'daholocene':
 elif dataset_txt == 'graphem':
     # [Keep original graphem code - lines 119-217 from original file]
     print('=== Processing GraphEM reconstruction ===')
-    data_filename = glob.glob(data_dir+'test-run-graphem-cfg/'+'*recon.nc')[0]
+    # Older cfr-tutorial runs nest the recon under test-run-graphem-cfg/;
+    # the presto pipeline writes job_r01_recon.nc flat in the data dir. Accept
+    # either so both layouts work.
+    matches = (glob.glob(data_dir+'test-run-graphem-cfg/'+'*recon.nc')
+               or glob.glob(data_dir+'job_r*_recon.nc'))
+    if not matches:
+        raise FileNotFoundError(
+            f'No GraphEM *recon.nc found in {data_dir} '
+            '(checked test-run-graphem-cfg/ and flat job_r*_recon.nc).')
+    data_filename = matches[0]
     data_xarray = xr.open_dataset(data_filename)
 
     with open(data_dir+'configs.yml','r') as file:
