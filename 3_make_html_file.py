@@ -101,8 +101,20 @@ elif time_units == 'CE':
     txt_time_new  = str(int(np.ceil(max(year))))
     txt_time_diff = str(np.abs(int(year[1]-year[0])))
 
-# Set text values
-txt_ref_period = '0-1 ka'  #TODO: Check this. Is this always true?
+# Set text values.
+# Script 2 re-references to 0-1 ka, but falls back to the youngest available
+# 1000-yr window when the reconstruction doesn't cover 0-1 ka (reduced time
+# range). Mirror that here so the displayed label matches the data instead of
+# always claiming "0-1 ka".
+if len(np.where((age >= 0) & (age < 1000))[0]) > 0:
+    txt_ref_period = '0-1 ka'
+else:
+    _youngest = float(np.min(age))
+    _ind_ref = np.where(age < _youngest + 1000)[0]
+    if len(_ind_ref) == 0:
+        _ind_ref = np.array([int(np.argmin(age))])
+    txt_ref_period = '{:.0f}-{:.0f} BP'.format(
+        float(np.min(age[_ind_ref])), float(np.max(age[_ind_ref])))
 map_region = 'global'
 
 # Create lat and lon strings

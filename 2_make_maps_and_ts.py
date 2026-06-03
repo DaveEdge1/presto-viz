@@ -171,6 +171,26 @@ if dataset_txt == 'temp12k':       levels = np.arange(-2,2.1,.2)
 # Find reference period for the reconstruction
 if   ref_period == '0-1 ka':       ind_ref = np.where((age  >= 0)    & (age  < 1000))[0]
 elif ref_period == '1951-1980 CE': ind_ref = np.where((year >= 1951) & (year <= 1980))[0]
+else:                              ind_ref = np.array([], dtype=int)
+
+# Guard against an empty reference window. If the reconstruction's age range
+# doesn't include the reference period (e.g. a user reduced the time range so
+# it starts after 1 ka), ind_ref is empty. Subtracting nanmean over an empty
+# slice yields NaN, which turns the ENTIRE field into NaN — every map/timestep
+# then renders blank ("Please select another year."). Fall back to a reference
+# window of the same 1000-yr width anchored at the youngest available age so
+# the data stays finite and the spatial patterns still render.
+if ref_period != 'none' and len(ind_ref) == 0 and len(age) > 0:
+    youngest = float(np.min(age))
+    ind_ref = np.where(age < youngest + 1000)[0]
+    if len(ind_ref) == 0:
+        ind_ref = np.array([int(np.argmin(age))])
+    ref_lo = float(np.min(age[ind_ref])); ref_hi = float(np.max(age[ind_ref]))
+    print('WARNING: reconstruction (ages {:.0f}-{:.0f} yr BP) does not cover the '
+          '{} reference period; using the youngest available window '
+          '{:.0f}-{:.0f} yr BP as the reference instead.'.format(
+              youngest, float(np.max(age)), ref_period, ref_lo, ref_hi))
+    ref_period = '{:.0f}-{:.0f} BP'.format(ref_lo, ref_hi)
 
 # Get dimensions
 n_methods     = var_spatial_members.shape[0]
