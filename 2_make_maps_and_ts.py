@@ -168,18 +168,46 @@ if dataset_txt == 'temp12k':       levels = np.arange(-2,2.1,.2)
 
 #%% PROCESS SPATIAL DATA
 
-# Find reference period for the reconstruction
-if   ref_period == '0-1 ka':       ind_ref = np.where((age  >= 0)    & (age  < 1000))[0]
+# Find reference period for the reconstruction.
+#
+# Holocene DA is a *relative* reconstruction: recon_tas is already expressed as
+# anomalies w.r.t. the run's reference_period — the config's "time interval for
+# anomaly calculation" (see da_main_code.py / da_load_proxies.py, which remove
+# that period's mean from both the model prior and the proxies). Use that SAME
+# period as the visualizer baseline so (a) it matches what the reconstruction
+# actually computed and (b) it is guaranteed to fall inside the reconstructed
+# age range. The dataset-default windows below are only a fallback for runs
+# that don't carry a reference_period in configs.yml.
+ref_bounds_bp = None
+if dataset_txt in ('daholocene', 'holocenehydro'):
+    _cfg_path = os.path.join(data_dir, 'configs.yml')
+    if os.path.exists(_cfg_path):
+        try:
+            with open(_cfg_path) as _f:
+                _cfg = yaml.load(_f, Loader=yaml.FullLoader) or {}
+            _rp = _cfg.get('presto_config', {}).get('reference_period', {}).get('value')
+            if _rp is not None:
+                _nums = [float(x) for x in
+                         str(_rp).strip().strip('[](){}').replace(',', ' ').split()]
+                if len(_nums) >= 2:
+                    ref_bounds_bp = (min(_nums[0], _nums[1]), max(_nums[0], _nums[1]))
+        except Exception as _e:
+            print('WARNING: could not read reference_period from configs.yml:', _e)
+
+if ref_bounds_bp is not None:
+    ind_ref = np.where((age >= ref_bounds_bp[0]) & (age < ref_bounds_bp[1]))[0]
+    ref_period = '{:g}-{:g} ka'.format(ref_bounds_bp[0] / 1000., ref_bounds_bp[1] / 1000.)
+    print('Using reconstruction reference_period {:.0f}-{:.0f} BP from configs.yml '
+          'as the anomaly baseline.'.format(ref_bounds_bp[0], ref_bounds_bp[1]))
+elif ref_period == '0-1 ka':       ind_ref = np.where((age  >= 0)    & (age  < 1000))[0]
 elif ref_period == '1951-1980 CE': ind_ref = np.where((year >= 1951) & (year <= 1980))[0]
 else:                              ind_ref = np.array([], dtype=int)
 
-# Guard against an empty reference window. If the reconstruction's age range
-# doesn't include the reference period (e.g. a user reduced the time range so
-# it starts after 1 ka), ind_ref is empty. Subtracting nanmean over an empty
-# slice yields NaN, which turns the ENTIRE field into NaN — every map/timestep
-# then renders blank ("Please select another year."). Fall back to a reference
-# window of the same 1000-yr width anchored at the youngest available age so
-# the data stays finite and the spatial patterns still render.
+# Last-resort guard: if the chosen reference window still isn't covered by the
+# reconstructed ages (e.g. configs.yml missing and the dataset default is out
+# of range), fall back to the youngest available 1000-yr window so the field
+# doesn't NaN out entirely — which would blank every timestep with "Please
+# select another year." rather than show results.
 if ref_period != 'none' and len(ind_ref) == 0 and len(age) > 0:
     youngest = float(np.min(age))
     ind_ref = np.where(age < youngest + 1000)[0]

@@ -8,6 +8,7 @@ import os
 import sys
 import numpy as np
 import xarray as xr
+import yaml
 import functions_presto
 
 
@@ -102,13 +103,29 @@ elif time_units == 'CE':
     txt_time_diff = str(np.abs(int(year[1]-year[0])))
 
 # Set text values.
-# Script 2 re-references to 0-1 ka, but falls back to the youngest available
-# 1000-yr window when the reconstruction doesn't cover 0-1 ka (reduced time
-# range). Mirror that here so the displayed label matches the data instead of
-# always claiming "0-1 ka".
-if len(np.where((age >= 0) & (age < 1000))[0]) > 0:
-    txt_ref_period = '0-1 ka'
-else:
+# Mirror script 2: the visualizer baseline is the reconstruction's own
+# reference_period (the config's "time interval for anomaly calculation"),
+# read from configs.yml, rather than a hard-coded "0-1 ka". Fall back to the
+# dataset default, or the youngest available window, when no config is present.
+txt_ref_period = '0-1 ka'
+_ref_bounds = None
+if dataset_txt in ('daholocene', 'holocenehydro'):
+    _cfg_path = os.path.join(data_dir, 'configs.yml')
+    if os.path.exists(_cfg_path):
+        try:
+            with open(_cfg_path) as _f:
+                _cfg = yaml.load(_f, Loader=yaml.FullLoader) or {}
+            _rp = _cfg.get('presto_config', {}).get('reference_period', {}).get('value')
+            if _rp is not None:
+                _nums = [float(x) for x in
+                         str(_rp).strip().strip('[](){}').replace(',', ' ').split()]
+                if len(_nums) >= 2:
+                    _ref_bounds = (min(_nums[0], _nums[1]), max(_nums[0], _nums[1]))
+        except Exception as _e:
+            print('WARNING: could not read reference_period from configs.yml:', _e)
+if _ref_bounds is not None:
+    txt_ref_period = '{:g}-{:g} ka'.format(_ref_bounds[0] / 1000., _ref_bounds[1] / 1000.)
+elif len(age) > 0 and len(np.where((age >= 0) & (age < 1000))[0]) == 0:
     _youngest = float(np.min(age))
     _ind_ref = np.where(age < _youngest + 1000)[0]
     if len(_ind_ref) == 0:
