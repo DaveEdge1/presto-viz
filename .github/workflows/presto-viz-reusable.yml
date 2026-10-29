@@ -26,6 +26,26 @@ on:
         required: false
         type: string
         default: 'web_assets/'
+      site_dataset_id:
+        description: 'Dataset id for output file names and the visualizer, e.g. presto2k (default: detected dataset)'
+        required: false
+        type: string
+        default: ''
+      site_dataset_name:
+        description: 'Dataset name shown on maps, time series and the visualizer, e.g. "presto 2k" (default: from the data)'
+        required: false
+        type: string
+        default: ''
+      site_version:
+        description: 'Version for output file names, with underscores, e.g. 0_1_0 (default: reconstruction_id)'
+        required: false
+        type: string
+        default: ''
+      n_realizations:
+        description: 'Number of individual seed runs (realizations) to visualize for multi-run reconstructions such as LMR (default 3)'
+        required: false
+        type: string
+        default: ''
     outputs:
       visualization_artifact:
         description: 'Name of the visualization output artifact'
@@ -115,6 +135,11 @@ jobs:
           echo "DATA_DIR=$DATA_DIR" >> $GITHUB_ENV
           echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
           echo "WEB_DATA_DIR=$WEB_DATA_DIR" >> $GITHUB_ENV
+          # Optional paleopresto.com naming and realization count (read by functions_presto.py)
+          echo "PRESTO_SITE_DATASET=${{ inputs.site_dataset_id }}" >> $GITHUB_ENV
+          echo "PRESTO_SITE_NAME=${{ inputs.site_dataset_name }}" >> $GITHUB_ENV
+          echo "PRESTO_SITE_VERSION=${{ inputs.site_version }}" >> $GITHUB_ENV
+          echo "PRESTO_N_REALIZATIONS=${{ inputs.n_realizations }}" >> $GITHUB_ENV
 
           echo "=== Presto Visualization Processing ==="
           echo "Reconstruction ID: $RECONSTRUCTION_ID"
