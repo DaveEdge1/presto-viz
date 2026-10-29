@@ -79,8 +79,9 @@ if dataset_txt == 'lmr':
     #
     print('=== Processing CFR/LMR2 Reconstruction ===')
 
-    # Load up to 3 individual seed files: job_r01_recon.nc, job_r02_recon.nc, ...
-    seed_files = sorted(glob.glob(os.path.join(data_dir, 'job_r*_recon.nc')))[:3]
+    # Load the first N individual seed files (job_r01_recon.nc, job_r02_recon.nc, ...),
+    # N set by the workflow's n_realizations input (default 3)
+    seed_files = sorted(glob.glob(os.path.join(data_dir, 'job_r*_recon.nc')))[:functions_presto.n_realizations()]
     if not seed_files:
         raise FileNotFoundError(
             f'No job_r*_recon.nc files found in {data_dir}. '

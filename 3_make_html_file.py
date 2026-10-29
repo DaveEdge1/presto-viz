@@ -60,6 +60,7 @@ var_txt      = 'tas'
 quantity_txt = 'Annual'
 dataset_txt, version_txt = functions_presto.detect_dataset(data_dir,var_txt,quantity_txt)
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
+output_dataset_txt, output_version_txt, _ = functions_presto.output_naming(dataset_txt,version_txt,None)
 
 # Construct output directory path robustly
 output_dir_full = os.path.join(output_dir, 'viz')
@@ -76,7 +77,7 @@ age          = data_xarray['age'].values
 lat          = data_xarray['lat'].values
 lon          = data_xarray['lon'].values
 options      = data_xarray['options'].values
-dataset_name = data_xarray.attrs['dataset_name']
+dataset_name = functions_presto.output_naming(dataset_txt,version_txt,data_xarray.attrs['dataset_name'])[2]
 data_xarray.close()
 year = 1950-age
 
@@ -147,14 +148,13 @@ for line in lines_template:
             lines_output.append(setting_line_txt)
     elif line == '[INSERT VARIABLES]\n':
         lines_output.append("      // Set initial variables\n")
-        # Generate per-method slugs for the dropdown (matches Script 2 image filenames)
-        def _mslug(m): return str(m).lower().replace(' ', '_')
+        # Versions for the dropdown (matches Script 2 image filenames)
         if dataset_txt == 'lmr' and len(method) > 1:
-            method_slugs_s3 = [_mslug(m) for m in method]
+            method_slugs_s3 = functions_presto.realization_versions(method,output_version_txt)
         else:
-            method_slugs_s3 = [version_txt]
+            method_slugs_s3 = [output_version_txt]
         versions_js = "','".join(method_slugs_s3)
-        lines_output.append("      var dataset              = '"+dataset_txt+"';\n")
+        lines_output.append("      var dataset              = '"+output_dataset_txt+"';\n")
         lines_output.append("      var dataset_name         = '"+dataset_name+"';\n")
         lines_output.append("      var dataset_details      = 'Reference period: "+txt_ref_period+"';\n")
         lines_output.append("      var versions_available   = ['"+versions_js+"'];\n")
@@ -193,7 +193,7 @@ with open(index_file, "w") as f:
 #%% MOVE FILES AND CREATE ZIP
 
 # Verify that script 2 output exists
-script2_output = os.path.join(output_dir, 'viz', 'assets', dataset_txt)
+script2_output = os.path.join(output_dir, 'viz', 'assets', output_dataset_txt)
 print(f'Checking for script 2 output in: {script2_output}')
 if not os.path.exists(script2_output):
     raise FileNotFoundError(f'Script 2 output not found. Expected files in: {script2_output}')
@@ -212,7 +212,7 @@ if copy_result != 0:
 
 # Create zip file
 os.chdir(output_dir_full)
-zip_file = os.path.join(output_dir, f'viz_{dataset_txt}_{version_txt}.zip')
+zip_file = os.path.join(output_dir, f'viz_{output_dataset_txt}_{output_version_txt}.zip')
 print(f'Creating zip file: {zip_file}')
 os.system(f'zip -r "{zip_file}" *')
 

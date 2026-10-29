@@ -23,6 +23,36 @@ def detect_dataset(data_dir,var_txt,quantity_txt):
     elif 'graph_em'    in data_dir: return 'graphem',    data_dir.split('_graph_em')[0].split('/')[-1]
     else:                           return 'lmr',        data_dir.rstrip('/').split('/')[-1]
 
+# Names used for the output files and labels. The reusable workflow can set these so the
+# output drops straight into paleopresto.com (e.g. presto2k, "presto 2k", 0_1_0); otherwise
+# they default to the detected dataset, the run's version, and the dataset's own name.
+#   PRESTO_SITE_DATASET  dataset id in file names and the visualizer
+#   PRESTO_SITE_NAME     dataset name shown on maps, time series and the visualizer
+#   PRESTO_SITE_VERSION  version in file names (underscores, e.g. 0_1_0)
+def output_naming(dataset_txt,version_txt,dataset_name):
+    return (os.environ.get('PRESTO_SITE_DATASET') or dataset_txt,
+            os.environ.get('PRESTO_SITE_VERSION') or version_txt,
+            os.environ.get('PRESTO_SITE_NAME') or dataset_name)
+
+# Number of realizations (individual seed runs) to visualize for multi-run reconstructions
+def n_realizations(default=3):
+    return int(os.environ.get('PRESTO_N_REALIZATIONS') or default)
+
+# Version strings for each method/realization when a reconstruction has several of them.
+# With a site version set they are <version>_r1, <version>_r2, ...; otherwise slugs of the
+# method names (e.g. run_1), as before.
+def realization_versions(method,version_txt):
+    if os.environ.get('PRESTO_SITE_VERSION'):
+        return [version_txt+'_r'+str(i+1) for i in range(len(method))]
+    return [str(m).lower().replace(' ','_') for m in method]
+
+# Version text for maps and titles: 0_1_0 -> 0.1.0, 0_1_0_r2 -> 0.1.0, realization 2
+def version_label(version_txt):
+    base,sep,n = version_txt.rpartition('_r')
+    if sep and n.isdigit() and os.environ.get('PRESTO_SITE_VERSION'):
+        return base.replace('_','.')+', realization '+n
+    return version_txt.replace('_','.')
+
 # Compute the bounding latitudes and longitudes for a regular grid, given central values
 def bounding_latlon(lat,lon):
     #

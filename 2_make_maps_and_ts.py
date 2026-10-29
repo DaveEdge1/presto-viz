@@ -59,15 +59,21 @@ output_dir = sys.argv[2]
 var_txt      = 'tas'
 quantity_txt = 'Annual'
 dataset_txt, version_txt = functions_presto.detect_dataset(data_dir,var_txt,quantity_txt)
-filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
+data_filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
 print('Detected dataset: '+dataset_txt+', version: '+version_txt)
+
+# Output files may be named for paleopresto.com instead (see functions_presto.output_naming);
+# dataset_txt still selects the dataset-specific settings below.
+output_dataset_txt, version_txt, _ = functions_presto.output_naming(dataset_txt,version_txt,None)
+filename_txt = output_dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
+print('Output naming: '+filename_txt)
 
 # Construct output directory path robustly
 output_dir_full = os.path.join(output_dir, 'viz')
 if not os.path.exists(output_dir_full): os.makedirs(output_dir_full)
 output_dir_full = os.path.join(output_dir_full, 'assets')
 if not os.path.exists(output_dir_full): os.makedirs(output_dir_full)
-output_dir_full = os.path.join(output_dir_full, dataset_txt)
+output_dir_full = os.path.join(output_dir_full, output_dataset_txt)
 if not os.path.exists(output_dir_full): os.makedirs(output_dir_full)
 # Ensure path ends with separator for consistency
 output_dir_full = output_dir_full + os.sep
@@ -75,7 +81,7 @@ output_dir_full = output_dir_full + os.sep
 print(' ===== STARTING script 2: Making maps and time series for '+str(filename_txt)+' =====')
 
 # Load data with robust path construction
-data_file_path = os.path.join(data_dir, filename_txt + '.nc')
+data_file_path = os.path.join(data_dir, data_filename_txt + '.nc')
 print('Loading '+data_file_path)
 if not os.path.exists(data_file_path):
     raise FileNotFoundError(f'Data file not found: {data_file_path}')
@@ -93,7 +99,7 @@ lat                 = data_xarray['lat'].values
 lon                 = data_xarray['lon'].values
 lat_bounds          = data_xarray['lat_bounds'].values
 lon_bounds          = data_xarray['lon_bounds'].values
-dataset_name        = data_xarray.attrs['dataset_name']
+dataset_name        = functions_presto.output_naming(dataset_txt,version_txt,data_xarray.attrs['dataset_name'])[2]
 dataset_source_url  = data_xarray.attrs['dataset_source_url']
 data_xarray.close()
 year = 1950-age
@@ -391,9 +397,8 @@ print('var_global_upperbound:     ',var_global_upperbound.shape)
 # Compute the mean of all methods
 var_spatial_mean_allmethods = np.nanmean(var_spatial_mean,axis=0)
 
-# Create URL-safe slugs for each method (used as "version" in image filenames)
-def method_to_slug(m): return str(m).lower().replace(' ', '_')
-method_slugs = [method_to_slug(m) for m in method]
+# Version string for each method/realization (used as "version" in image filenames)
+method_slugs = functions_presto.realization_versions(method,version_txt)
 
 
 #%% MAP PREPARATION
@@ -549,7 +554,7 @@ def make_one_plot(args):
 
     # Text annotation
     ax2.text(extra_txt_x, extra_txt_y,
-             dataset_name + ", v." + version_txt.replace("_", ".") +
+             dataset_name + ", v." + functions_presto.version_label(version_txt) +
              ", " + str(time_value) + " " + time_unit_txt,
              fontsize=7, ha="center", transform=crs_platecarree)
 
@@ -600,7 +605,7 @@ for _i_m in range(n_methods):
     if n_methods > 1:
         # Override module-level names; all downstream code uses these variables.
         version_txt                 = method_slugs[_i_m]
-        filename_txt                = (dataset_txt + '_v' + version_txt + '_'
+        filename_txt                = (output_dataset_txt + '_v' + version_txt + '_'
                                        + var_txt + '_' + quantity_txt.lower())
         var_spatial_mean_allmethods = var_spatial_mean[_i_m, :, :, :].values   # (time,lat,lon)
         var_global_mean_allmethods  = var_global_mean[_i_m, :]                  # (time,)
@@ -612,6 +617,10 @@ for _i_m in range(n_methods):
             var_global_lowerbound = var_global_mean_allmethods
             var_global_upperbound = var_global_mean_allmethods
     print(f'\n=== Generating images for method {_i_m+1}/{n_methods}: {filename_txt} ===')
+
+    # Each realization's time series show only that realization, matching its maps
+    ts_index  = slice(_i_m,_i_m+1) if n_methods > 1 else slice(None)
+    ts_method = method[ts_index]
 
     # === MAIN LOOP USING MULTIPROCESSING POOL ===
     print("Step 1: Making maps and info panels with parallel workers (4 processes)")
@@ -700,7 +709,7 @@ for _i_m in range(n_methods):
         unit_txt = ' ('+csv_unit_txt+')'
         columns  = [time_name_txt+' ('+time_unit_txt+')']
         values   = [np.asarray(time_var,dtype=float)]
-        for k,method_chosen in enumerate(method):
+        for k,method_chosen in enumerate(ts_method):
             columns.append(str(method_chosen)+' mean'+unit_txt)
             values.append(var_mean_to_plot[k,:])
             if not skip_spatial_ens:
@@ -708,8 +717,8 @@ for _i_m in range(n_methods):
                             str(method_chosen)+' percentile '+pct_hi_txt+unit_txt]
                 values  += [var_lowerbound_to_plot[k,:],var_upperbound_to_plot[k,:]]
         header = ['Dataset name: '+dataset_name,
-                  'Dataset details: '+dataset_txt+' v.'+version_txt+' '+var_txt+' '+quantity_txt.lower(),
-                  'Method(s): '+str(np.array(method)),
+                  'Dataset details: '+output_dataset_txt+' v.'+version_txt+' '+var_txt+' '+quantity_txt.lower(),
+                  'Method(s): '+str(np.array(ts_method)),
                   'Lat/lon or region: '+location_csv_txt,
                   '---',
                   'Original source URL: '+dataset_source_url,
@@ -732,7 +741,7 @@ for _i_m in range(n_methods):
         # Make an interactive time series with bokeh
         p1 = figure(width=1200,
                     height=ts_height,
-                    title=title_txt_bokeh+' for '+dataset_name+', v.'+version_txt.replace('_','.')+location_title_txt+' (uncertainties: '+spatial_uncertainty_txt+')',
+                    title=title_txt_bokeh+' for '+dataset_name+', v.'+functions_presto.version_label(version_txt)+location_title_txt+' (uncertainties: '+spatial_uncertainty_txt+')',
                     tools='pan,box_zoom,hover,save,reset',
                     active_drag='box_zoom',active_inspect='hover',
                     x_range=Range1d(bounds=(min(time_var),max(time_var))))
@@ -745,7 +754,7 @@ for _i_m in range(n_methods):
         p1.y_range.start = ts_yrange[0]
         p1.y_range.end   = ts_yrange[1]
         #
-        for k,method_chosen in enumerate(method):
+        for k,method_chosen in enumerate(ts_method):
             if skip_spatial_ens: pass
             else: p1.varea(time_var,var_lowerbound_to_plot[k,:],var_upperbound_to_plot[k,:],color=method_color_list[k],alpha=0.1,legend_label=method_chosen)
             p1.line(time_var,var_mean_to_plot[k,:],color=method_color_list[k],line_width=1,legend_label=method_chosen)
@@ -791,9 +800,9 @@ for _i_m in range(n_methods):
                 # Make an interactive time series with bokeh
                 lat_txt = str('{:.1f}'.format(lat[j]))
                 lon_txt = str('{:.1f}'.format(lon_neg[i]))
-                var_mean_to_plot       = var_spatial_mean[:,:,j,i].values
-                var_lowerbound_to_plot = var_spatial_lowerbound[:,:,j,i].values
-                var_upperbound_to_plot = var_spatial_upperbound[:,:,j,i].values
+                var_mean_to_plot       = var_spatial_mean[ts_index,:,j,i].values
+                var_lowerbound_to_plot = var_spatial_lowerbound[ts_index,:,j,i].values
+                var_upperbound_to_plot = var_spatial_upperbound[ts_index,:,j,i].values
                 location_title_txt     = ' near '+lat_txt+'\u00B0N, '+lon_txt+'\u00B0E'
                 outputfile_txt         = 'ts_'+filename_txt+'_lat_'+lat_txt+'_lon_'+lon_txt+'.html'
                 text_color             = 'black'
@@ -870,13 +879,13 @@ for _i_m in range(n_methods):
             # Find the index of the region
             ind_selected = np.where(mask_3D.abbrevs.values == abbrev_selected)[0]
             if len(ind_selected) == 1:
-                var_mean_to_plot       = var_regional_mean[:,:,ind_selected[0]]
-                var_lowerbound_to_plot = var_regional_lowerbound[:,:,ind_selected[0]]
-                var_upperbound_to_plot = var_regional_upperbound[:,:,ind_selected[0]]
+                var_mean_to_plot       = var_regional_mean[ts_index,:,ind_selected[0]]
+                var_lowerbound_to_plot = var_regional_lowerbound[ts_index,:,ind_selected[0]]
+                var_upperbound_to_plot = var_regional_upperbound[ts_index,:,ind_selected[0]]
             else:
-                var_mean_to_plot       = nans_to_plot
-                var_lowerbound_to_plot = nans_to_plot
-                var_upperbound_to_plot = nans_to_plot
+                var_mean_to_plot       = nans_to_plot[ts_index]
+                var_lowerbound_to_plot = nans_to_plot[ts_index]
+                var_upperbound_to_plot = nans_to_plot[ts_index]
             #
             make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color)
             save_time_series_csv(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,
