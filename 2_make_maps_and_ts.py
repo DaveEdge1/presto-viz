@@ -17,6 +17,7 @@ import cartopy.crs as ccrs
 import cartopy.util as cutil
 from cartopy.feature import ShapelyFeature
 import xarray as xr
+import yaml
 import regionmask
 import time as timekeeping
 import functions_presto
@@ -57,11 +58,26 @@ output_dir = sys.argv[2]
 
 var_txt      = 'tas'
 quantity_txt = 'Annual'
-if   'holocene_da' in data_dir: dataset_txt = 'daholocene'; version_txt = data_dir.split('_holocene_da')[0].split('/')[-1]
-elif 'graph_em'    in data_dir: dataset_txt = 'graphem';    version_txt = data_dir.split('_graph_em')[0].split('/')[-1]
-elif any(f.startswith('temp12k_v') and f.endswith('.nc') for f in os.listdir(data_dir)): dataset_txt = 'temp12k'; version_txt = data_dir.rstrip('/').split('/')[-1]
-else:                           dataset_txt = 'lmr';        version_txt = data_dir.rstrip('/').split('/')[-1]
+
+# Identify the dataset from the file Script 1 wrote, <dataset>_v<version>_<var>_<quantity>.nc.
+# The data directory's name is not reliable (e.g. HoloceneDA_Run_2_Reviz_2 contains no
+# 'holocene_da'), so the directory checks below are only a fallback.
+known_datasets = ['daholocene','holocenehydro','lgmr','kaufman2020','temp12k','lmr','phyda',
+                  'neukom2019','graphem','nada','owda','era20c','era5']
+formatted_suffix = '_'+var_txt+'_'+quantity_txt.lower()+'.nc'
+dataset_txt = None
+for f in sorted(os.listdir(data_dir)):
+    for ds in known_datasets:
+        if f.startswith(ds+'_v') and f.endswith(formatted_suffix):
+            dataset_txt = ds; version_txt = f[len(ds)+2:-len(formatted_suffix)]
+            break
+    if dataset_txt is not None: break
+if dataset_txt is None:
+    if   'holocene_da' in data_dir: dataset_txt = 'daholocene'; version_txt = data_dir.split('_holocene_da')[0].split('/')[-1]
+    elif 'graph_em'    in data_dir: dataset_txt = 'graphem';    version_txt = data_dir.split('_graph_em')[0].split('/')[-1]
+    else:                           dataset_txt = 'lmr';        version_txt = data_dir.rstrip('/').split('/')[-1]
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
+print('Detected dataset: '+dataset_txt+', version: '+version_txt)
 
 # Construct output directory path robustly
 output_dir_full = os.path.join(output_dir, 'viz')
@@ -124,13 +140,12 @@ if   var_units in ['degC','degrees Celsius']:   info_unit_txt = '$^\circ$C'; col
 elif var_units == 'permil (relative to VSMOW)': info_unit_txt = 'permil';    colorbar_unit_txt = 'permil relative to VSMOW'; html_unit_txt = 'permil'
 else:                                           info_unit_txt = var_units;   colorbar_unit_txt = var_units;                  html_unit_txt = var_units
 
+# Units as written in the time series CSV files (e.g. "temperature (degrees Celsius)")
+csv_unit_txt = 'degrees Celsius' if var_units in ['degC','degrees Celsius'] else var_units
+
 # Set some text
 colorbar_txt    = quantity_txt+' '+variable_name+' ('+colorbar_unit_txt+')'
 title_txt_bokeh = quantity_txt+' '+variable_name+' ('+html_unit_txt+')'
-
-# For some variables, label fewer steps on the colorbar, so that text does not overlap
-if var_txt in ['precip','slp','pdsi','spei']: tick_levels = levels[::2]
-else: tick_levels = levels
 
 # Set the vertical size of the time series figure
 if len(method) == 1: ts_height = 300
@@ -164,6 +179,13 @@ if dataset_txt in ['nada','owda']: ts_yrange = [-10,10]
 if dataset_txt == 'lgmr':          ts_yrange = [-30,5]
 if dataset_txt == 'kaufman2020':   levels = np.arange(-2,2.1,.2)
 if dataset_txt == 'temp12k':       levels = np.arange(-2,2.1,.2)
+
+# Colorbar ticks, set after the dataset-specific levels above. Evenly spaced levels get
+# matplotlib's default ticks; for the uneven default levels, label every level, or fewer
+# steps for some variables so that text does not overlap.
+if np.allclose(np.diff(levels), np.diff(levels)[0]): tick_levels = None
+elif var_txt in ['precip','slp','pdsi','spei']:      tick_levels = levels[::2]
+else:                                                tick_levels = levels
 
 
 #%% PROCESS SPATIAL DATA
@@ -559,6 +581,34 @@ def make_one_plot(args):
     plt.close(fig2)
 
 
+def make_colorbar_image(outputfile_txt):
+    """Save the map's colorbar as its own image; the visualizer shows it below the map."""
+    fig = plt.figure(figsize=(10, 1.2))
+    ax = fig.add_axes([0.04, 0.55, 0.92, 0.3])
+    if map_type == "contourf":
+        # Same colors as contourf(colors=colors_selected, extend="both")
+        cmap_cb = matplotlib.colors.ListedColormap(colors_selected[1:-1])
+        cmap_cb.set_under(colors_selected[0])
+        cmap_cb.set_over(colors_selected[-1])
+        norm_cb = matplotlib.colors.BoundaryNorm(levels, cmap_cb.N)
+        extend_cb, ticks_cb = "both", tick_levels
+    elif map_type == "pcolormesh":
+        cmap_cb = matplotlib.colormaps[cmap]
+        norm_cb = matplotlib.colors.Normalize(vmin=levels[0], vmax=levels[-1])
+        extend_cb, ticks_cb = "neither", tick_levels
+    else:
+        cmap_cb = matplotlib.colormaps[cmap]
+        norm_cb = matplotlib.colors.Normalize(vmin=-2, vmax=2)
+        extend_cb, ticks_cb = "neither", None
+    colorbar = fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm_cb, cmap=cmap_cb), cax=ax,
+                            orientation="horizontal", extend=extend_cb, ticks=ticks_cb)
+    label_txt = colorbar_txt if ref_period == "none" else colorbar_txt + ", rel. " + ref_period
+    colorbar.set_label(label_txt, fontsize=14)
+    colorbar.ax.tick_params(labelsize=11)
+    plt.savefig(output_dir_full + outputfile_txt, dpi=125, format="png", bbox_inches="tight")
+    plt.close(fig)
+
+
 # ── PER-METHOD MAP + TIME-SERIES GENERATION ───────────────────────────────────
 # For n_methods==1 this runs once with the original filename_txt / version_txt.
 # For n_methods>1  each seed run gets its own set of image files (keyed by its
@@ -644,6 +694,7 @@ for _i_m in range(n_methods):
                 print(f"Completed {idx+1}/{len(all_args)}")
 
     print("All maps and info panels complete")
+    make_colorbar_image("colorbar_" + filename_txt + ".png")
 
     #%% TIME SERIES FUNCTION
 
@@ -655,6 +706,42 @@ for _i_m in range(n_methods):
                          'black','royalblue','salmon','olive','orange','darkseagreen']
 
     lat_string, lon_string, j_for_ts, i_for_ts, lon_neg = functions_presto.select_latlons(lat, lon, map_region, dataset_txt)
+
+    # Percentile labels for the CSV columns, matching the uncertainty band shown
+    if spatial_uncertainty_txt == '5 - 95th percentile range': pct_lo_txt, pct_hi_txt = '5', '95'
+    else:                                                      pct_lo_txt, pct_hi_txt = '2.5', '97.5'
+
+    # A function to save a time series as CSV, in the format read by paleopresto.com's
+    # plot_ts_from_csv.html: 12 metadata lines, then time plus mean/lower/upper per method.
+    def save_time_series_csv(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_csv_txt,outputfile_txt):
+        unit_txt = ' ('+csv_unit_txt+')'
+        columns  = [time_name_txt+' ('+time_unit_txt+')']
+        values   = [np.asarray(time_var,dtype=float)]
+        for k,method_chosen in enumerate(method):
+            columns.append(str(method_chosen)+' mean'+unit_txt)
+            values.append(var_mean_to_plot[k,:])
+            if not skip_spatial_ens:
+                columns += [str(method_chosen)+' percentile '+pct_lo_txt+unit_txt,
+                            str(method_chosen)+' percentile '+pct_hi_txt+unit_txt]
+                values  += [var_lowerbound_to_plot[k,:],var_upperbound_to_plot[k,:]]
+        header = ['Dataset name: '+dataset_name,
+                  'Dataset details: '+dataset_txt+' v.'+version_txt+' '+var_txt+' '+quantity_txt.lower(),
+                  'Method(s): '+str(np.array(method)),
+                  'Lat/lon or region: '+location_csv_txt,
+                  '---',
+                  'Original source URL: '+dataset_source_url,
+                  'New reference period: '+ref_period,
+                  'Notes: Processed by PReSto (https://paleopresto.com/)',
+                  '---',
+                  'Time: '+time_name_txt+' ('+time_unit_txt+')',
+                  'Data: '+variable_name+' ('+csv_unit_txt+')',
+                  '---',
+                  ','.join(columns)]
+        rows = np.column_stack(values)
+        with open(output_dir_full+outputfile_txt,'w') as output_file:
+            output_file.write('\n'.join(header)+'\n')
+            for row in rows:
+                output_file.write(','.join('%.2f' % v for v in row)+'\n')
 
     # A function to make a time series
     def make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color):
@@ -712,6 +799,7 @@ for _i_m in range(n_methods):
         counter = 0
         n_total = len(j_for_ts)*len(i_for_ts)
         print('Step 3: Making time series at selected points. N='+str(n_total))
+        latlonfiles_rows = ['lat,lon,filename']
         for j in j_for_ts:
             counter += 1
             print('Processing: '+str(counter)+'/'+str(len(j_for_ts)))
@@ -727,6 +815,14 @@ for _i_m in range(n_methods):
                 outputfile_txt         = 'ts_'+filename_txt+'_lat_'+lat_txt+'_lon_'+lon_txt+'.html'
                 text_color             = 'black'
                 make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color)
+                save_time_series_csv(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,
+                                     '{:g} degN {:g} degE'.format(float(lat[j]),float(lon_neg[i])),
+                                     outputfile_txt[:-5]+'.csv')
+                latlonfiles_rows.append(str(float(lat[j]))+','+str(float(lon_neg[i]))+','+outputfile_txt[:-5])
+        #
+        # Index of the time series files, used by the visualizer to find the point nearest a click
+        with open(output_dir_full+'latlonfiles_'+filename_txt+'.csv','w') as output_file:
+            output_file.write('\n'.join(latlonfiles_rows)+'\n')
 
 
     #%% MAKE TIME SERIES FOR REGIONS
@@ -800,6 +896,9 @@ for _i_m in range(n_methods):
                 var_upperbound_to_plot = nans_to_plot
             #
             make_time_series(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,location_title_txt,outputfile_txt,text_color)
+            save_time_series_csv(var_mean_to_plot,var_lowerbound_to_plot,var_upperbound_to_plot,
+                                 'region '+ar6_all.abbrevs[j]+' ('+ar6_all.names[j]+')',
+                                 outputfile_txt[:-5]+'.csv')
 
 endtime_total = timekeeping.time()  # End timer
 
