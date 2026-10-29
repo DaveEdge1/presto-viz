@@ -4,8 +4,24 @@
 #    date  : 2/29/2024
 #==============================================================================
 
+import os
 import numpy as np
 import copy
+
+# Identify the dataset and version from the file Script 1 wrote, <dataset>_v<version>_<var>_<quantity>.nc.
+# The data directory's name is not reliable (e.g. HoloceneDA_Run_2_Reviz_2 contains no
+# 'holocene_da'), so the directory checks are only a fallback.
+def detect_dataset(data_dir,var_txt,quantity_txt):
+    known_datasets = ['daholocene','holocenehydro','lgmr','kaufman2020','temp12k','lmr','phyda',
+                      'neukom2019','graphem','nada','owda','era20c','era5']
+    formatted_suffix = '_'+var_txt+'_'+quantity_txt.lower()+'.nc'
+    for f in sorted(os.listdir(data_dir)):
+        for ds in known_datasets:
+            if f.startswith(ds+'_v') and f.endswith(formatted_suffix):
+                return ds, f[len(ds)+2:-len(formatted_suffix)]
+    if   'holocene_da' in data_dir: return 'daholocene', data_dir.split('_holocene_da')[0].split('/')[-1]
+    elif 'graph_em'    in data_dir: return 'graphem',    data_dir.split('_graph_em')[0].split('/')[-1]
+    else:                           return 'lmr',        data_dir.rstrip('/').split('/')[-1]
 
 # Compute the bounding latitudes and longitudes for a regular grid, given central values
 def bounding_latlon(lat,lon):

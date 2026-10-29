@@ -58,10 +58,7 @@ with open(template_file) as f:
 # Load reconstruction
 var_txt      = 'tas'
 quantity_txt = 'Annual'
-if   'holocene_da' in data_dir: dataset_txt = 'daholocene'; version_txt = data_dir.split('_holocene_da')[0].split('/')[-1]
-elif 'graph_em'    in data_dir: dataset_txt = 'graphem';    version_txt = data_dir.split('_graph_em')[0].split('/')[-1]
-elif any(f.startswith('temp12k_v') and f.endswith('.nc') for f in os.listdir(data_dir)): dataset_txt = 'temp12k'; version_txt = data_dir.rstrip('/').split('/')[-1]
-else:                           dataset_txt = 'lmr';        version_txt = data_dir.rstrip('/').split('/')[-1]
+dataset_txt, version_txt = functions_presto.detect_dataset(data_dir,var_txt,quantity_txt)
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
 
 # Construct output directory path robustly
