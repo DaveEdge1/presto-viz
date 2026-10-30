@@ -41,6 +41,11 @@ on:
         required: false
         type: string
         default: ''
+      reference_period:
+        description: 'Reference period for the anomalies, in yr BP, e.g. "0, 1000" (default: the run''s configs.yml, else the dataset default)'
+        required: false
+        type: string
+        default: ''
       n_realizations:
         description: 'Number of individual seed runs (realizations) to visualize for multi-run reconstructions such as LMR (default 3)'
         required: false
@@ -140,6 +145,7 @@ jobs:
           echo "PRESTO_SITE_NAME=${{ inputs.site_dataset_name }}" >> $GITHUB_ENV
           echo "PRESTO_SITE_VERSION=${{ inputs.site_version }}" >> $GITHUB_ENV
           echo "PRESTO_N_REALIZATIONS=${{ inputs.n_realizations }}" >> $GITHUB_ENV
+          echo "PRESTO_REFERENCE_PERIOD=${{ inputs.reference_period }}" >> $GITHUB_ENV
 
           echo "=== Presto Visualization Processing ==="
           echo "Reconstruction ID: $RECONSTRUCTION_ID"

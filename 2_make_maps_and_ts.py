@@ -191,8 +191,8 @@ else:                                                tick_levels = levels
 # actually computed and (b) it is guaranteed to fall inside the reconstructed
 # age range. The dataset-default windows below are only a fallback for runs
 # that don't carry a reference_period in configs.yml.
-ref_bounds_bp = None
-if dataset_txt in ('daholocene', 'holocenehydro'):
+ref_bounds_bp = functions_presto.reference_period_override()
+if ref_bounds_bp is None and dataset_txt in ('daholocene', 'holocenehydro'):
     _cfg_path = os.path.join(data_dir, 'configs.yml')
     if os.path.exists(_cfg_path):
         try:
@@ -210,7 +210,7 @@ if dataset_txt in ('daholocene', 'holocenehydro'):
 if ref_bounds_bp is not None:
     ind_ref = np.where((age >= ref_bounds_bp[0]) & (age < ref_bounds_bp[1]))[0]
     ref_period = '{:g}-{:g} ka'.format(ref_bounds_bp[0] / 1000., ref_bounds_bp[1] / 1000.)
-    print('Using reconstruction reference_period {:.0f}-{:.0f} BP from configs.yml '
+    print('Using reference_period {:.0f}-{:.0f} BP (workflow input, else configs.yml) '
           'as the anomaly baseline.'.format(ref_bounds_bp[0], ref_bounds_bp[1]))
 elif ref_period == '0-1 ka':       ind_ref = np.where((age  >= 0)    & (age  < 1000))[0]
 elif ref_period == '1951-1980 CE': ind_ref = np.where((year >= 1951) & (year <= 1980))[0]
