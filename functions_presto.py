@@ -8,20 +8,22 @@ import os
 import numpy as np
 import copy
 
-# Identify the dataset and version from the file Script 1 wrote, <dataset>_v<version>_<var>_<quantity>.nc.
+# Identify the dataset, version and variable from the file Script 1 wrote,
+# <dataset>_v<version>_<var>_<quantity>.nc (variable names contain no underscores).
 # The data directory's name is not reliable (e.g. HoloceneDA_Run_2_Reviz_2 contains no
-# 'holocene_da'), so the directory checks are only a fallback.
-def detect_dataset(data_dir,var_txt,quantity_txt):
-    known_datasets = ['daholocene','holocenehydro','lgmr','kaufman2020','temp12k','lmr','phyda',
+# 'holocene_da'), so the directory checks are only a fallback, for tas.
+def detect_dataset(data_dir,quantity_txt):
+    known_datasets = ['daholocene','holocenehydro','damp21ka','lgmr','kaufman2020','temp12k','lmr','phyda',
                       'neukom2019','graphem','nada','owda','era20c','era5']
-    formatted_suffix = '_'+var_txt+'_'+quantity_txt.lower()+'.nc'
+    formatted_suffix = '_'+quantity_txt.lower()+'.nc'
     for f in sorted(os.listdir(data_dir)):
         for ds in known_datasets:
             if f.startswith(ds+'_v') and f.endswith(formatted_suffix):
-                return ds, f[len(ds)+2:-len(formatted_suffix)]
-    if   'holocene_da' in data_dir: return 'daholocene', data_dir.split('_holocene_da')[0].split('/')[-1]
-    elif 'graph_em'    in data_dir: return 'graphem',    data_dir.split('_graph_em')[0].split('/')[-1]
-    else:                           return 'lmr',        data_dir.rstrip('/').split('/')[-1]
+                version_txt,_,var_txt = f[len(ds)+2:-len(formatted_suffix)].rpartition('_')
+                return ds, version_txt, var_txt
+    if   'holocene_da' in data_dir: return 'daholocene', data_dir.split('_holocene_da')[0].split('/')[-1], 'tas'
+    elif 'graph_em'    in data_dir: return 'graphem',    data_dir.split('_graph_em')[0].split('/')[-1], 'tas'
+    else:                           return 'lmr',        data_dir.rstrip('/').split('/')[-1], 'tas'
 
 # Names used for the output files and labels. The reusable workflow can set these so the
 # output drops straight into paleopresto.com (e.g. presto2k, "presto 2k", 0_1_0); otherwise
