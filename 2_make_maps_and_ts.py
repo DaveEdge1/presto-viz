@@ -56,9 +56,8 @@ output_dir = sys.argv[2]
 
 #%% LOAD DATA
 
-var_txt      = 'tas'
 quantity_txt = 'Annual'
-dataset_txt, version_txt = functions_presto.detect_dataset(data_dir,var_txt,quantity_txt)
+dataset_txt, version_txt, var_txt = functions_presto.detect_dataset(data_dir,quantity_txt)
 data_filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
 print('Detected dataset: '+dataset_txt+', version: '+version_txt)
 
@@ -119,6 +118,7 @@ elif var_txt == 'precip': variable_name = 'precipitation';                  cmap
 elif var_txt == 'slp':    variable_name = 'sea level pressure';             cmap = 'PuOr_r'; levels = np.arange(-5,5.1,.5)
 elif var_txt == 'pdsi':   variable_name = 'Palmer Drought Severity Index';  cmap = 'BrBG';   levels = np.arange(-5,5.1,.5)
 elif var_txt == 'spei':   variable_name = 'Standardized Precip-Evap Index'; cmap = 'BrBG';   levels = np.arange(-1.5,1.6,.1)
+elif var_txt == 'lakestatus': variable_name = 'lake status';                cmap = 'BrBG';   levels = np.arange(-50,51,10)
 else: print(' === ERROR: Unknown variable type ===')
 if var_units == 'Z-score': levels = np.arange(-2,2.1,.2)
 
@@ -150,6 +150,7 @@ ts_yrange = [yrange_min,yrange_max]
 
 if   dataset_txt == 'daholocene':    ref_period = '0-1 ka';       map_region = 'global';    map_type = 'contourf';         make_gridded_ts = True;  make_regional_ts = True
 elif dataset_txt == 'holocenehydro': ref_period = '0-1 ka';       map_region = 'global';    map_type = 'regions_ipcc_ar6'; make_gridded_ts = False; make_regional_ts = True
+elif dataset_txt == 'damp21ka':      ref_period = '0-1 ka';       map_region = 'global';    map_type = 'pcolormesh';       make_gridded_ts = True;  make_regional_ts = True
 elif dataset_txt == 'lgmr':          ref_period = '0-1 ka';       map_region = 'global';    map_type = 'contourf';         make_gridded_ts = True;  make_regional_ts = True
 elif dataset_txt == 'kaufman2020':   ref_period = '0-1 ka';       map_region = 'global';    map_type = 'pcolormesh';       make_gridded_ts = True;  make_regional_ts = False
 elif dataset_txt == 'temp12k':       ref_period = '0-1 ka';       map_region = 'global';    map_type = 'pcolormesh';       make_gridded_ts = True;  make_regional_ts = False
@@ -166,6 +167,7 @@ else: print(' === ERROR: Unknown dataset:',dataset_txt)
 # Some dataset-specific adjustments, to make webpages more useable
 if dataset_txt in ['nada','owda']: ts_yrange = [-10,10]
 if dataset_txt == 'lgmr':          ts_yrange = [-30,5]
+if var_txt == 'lakestatus':        ts_yrange = [-100,100]
 if dataset_txt == 'kaufman2020':   levels = np.arange(-2,2.1,.2)
 if dataset_txt == 'temp12k':       levels = np.arange(-2,2.1,.2)
 

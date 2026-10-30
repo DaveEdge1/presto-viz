@@ -56,9 +56,8 @@ with open(template_file) as f:
     lines_template = f.readlines()
 
 # Load reconstruction
-var_txt      = 'tas'
 quantity_txt = 'Annual'
-dataset_txt, version_txt = functions_presto.detect_dataset(data_dir,var_txt,quantity_txt)
+dataset_txt, version_txt, var_txt = functions_presto.detect_dataset(data_dir,quantity_txt)
 filename_txt = dataset_txt+'_v'+version_txt+'_'+var_txt+'_'+quantity_txt.lower()
 output_dataset_txt, output_version_txt, _ = functions_presto.output_naming(dataset_txt,version_txt,None)
 
@@ -87,6 +86,7 @@ year = 1950-age
 # Set parameters based on the dataset
 if   dataset_txt == 'daholocene': time_units = 'yr BP'
 elif dataset_txt == 'temp12k':    time_units = 'yr BP'
+elif dataset_txt == 'damp21ka':   time_units = 'yr BP'
 elif dataset_txt == 'graphem':    time_units = 'CE'
 elif dataset_txt == 'lmr':        time_units = 'CE'
 
