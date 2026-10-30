@@ -36,6 +36,14 @@ def output_naming(dataset_txt,version_txt,dataset_name):
             os.environ.get('PRESTO_SITE_VERSION') or version_txt,
             os.environ.get('PRESTO_SITE_NAME') or dataset_name)
 
+# Reference period (yr BP) for the visualized anomalies, from PRESTO_REFERENCE_PERIOD
+# (e.g. "0, 1000"). When set it overrides the run's own reference_period in configs.yml.
+def reference_period_override():
+    txt = os.environ.get('PRESTO_REFERENCE_PERIOD')
+    if not txt: return None
+    nums = [float(x) for x in txt.strip().strip('[](){}').replace(',',' ').split()]
+    return (min(nums[0],nums[1]), max(nums[0],nums[1]))
+
 # Number of realizations (individual seed runs) to visualize for multi-run reconstructions
 def n_realizations(default=3):
     return int(os.environ.get('PRESTO_N_REALIZATIONS') or default)

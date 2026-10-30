@@ -106,8 +106,8 @@ elif time_units == 'CE':
 # read from configs.yml, rather than a hard-coded "0-1 ka". Fall back to the
 # dataset default, or the youngest available window, when no config is present.
 txt_ref_period = '0-1 ka'
-_ref_bounds = None
-if dataset_txt in ('daholocene', 'holocenehydro'):
+_ref_bounds = functions_presto.reference_period_override()
+if _ref_bounds is None and dataset_txt in ('daholocene', 'holocenehydro'):
     _cfg_path = os.path.join(data_dir, 'configs.yml')
     if os.path.exists(_cfg_path):
         try:
